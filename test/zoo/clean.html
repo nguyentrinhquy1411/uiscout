@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Clean</title>
+<style>
+  .row { display: flex; gap: 8px; }
+  .chip { width: 90px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+</style></head>
+<body>
+  <nav><a href="/">Home</a></nav>
+  <main>
+    <h1>Nothing wrong here</h1>
+    <div class="row">
+      <button type="button" id="count">Count 0</button>
+      <button type="button" class="chip">A very long label that truncates on purpose</button>
+      <button type="button" id="load">Load data</button>
+      <label><input type="checkbox"> Remember me</label>
+      <input type="text" placeholder="Search">
+    </div>
+    <p id="out"></p>
+  </main>
+  <script>
+    let n = 0
+    document.getElementById('count').onclick = (e) => { e.target.textContent = 'Count ' + ++n }
+    document.getElementById('load').onclick = async () => {
+      const res = await fetch('/api/ok')
+      document.getElementById('out').textContent = (await res.json()).message
+    }
+  </script>
+</body></html>

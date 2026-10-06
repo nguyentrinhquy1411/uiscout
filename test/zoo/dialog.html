@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Dialog</title></head>
+<body>
+  <nav><a href="/">Home</a></nav>
+  <main>
+    <button type="button" id="open">Open settings</button>
+    <div id="dlg" role="dialog" aria-label="Settings" hidden>
+      <button type="button" id="close">Close</button>
+      <button type="button" id="dark">Dark mode</button>
+    </div>
+  </main>
+  <script>
+    const dlg = document.getElementById('dlg')
+    document.getElementById('open').onclick = () => { dlg.hidden = false }
+    document.getElementById('close').onclick = () => { dlg.hidden = true }
+  </script>
+</body></html>

@@ -1,0 +1,65 @@
+import type { CrawlResult } from './crawl.ts'
+import type { Finding } from './types.ts'
+
+/*
+ * The text report (design doc §10). Short and true: errors first, warnings
+ * grouped, and everything that wasn't walked said out loud.
+ */
+
+const MAX_PER_SECTION = 25
+
+export function renderText(result: CrawlResult): string {
+  const errors = result.findings.filter((f) => f.severity === 'error')
+  const warnings = result.findings.filter((f) => f.severity === 'warning')
+  const { nodes, edges } = result.graph
+  const lines: string[] = []
+
+  lines.push(`flowcheck: ${distinct(errors)} errors, ${distinct(warnings)} warnings · ${nodes.length} nodes, ${edges.length} edges, ${result.steps} steps`)
+  lines.push('')
+  section(lines, 'Errors', errors)
+  section(lines, 'Warnings', warnings)
+
+  if (result.healed.length) {
+    lines.push(`Healed lookups (${result.healed.length}): found by similarity, not exact match`)
+    for (const id of result.healed.slice(0, 10)) lines.push(`  ${id}`)
+    lines.push('')
+  }
+  // Listed apart and never counted as errors (§6 Flake policy).
+  lines.push(`Flaky (${result.flaky.length})${result.flaky.length ? ': failed, then passed from a fresh context' : ''}`)
+  for (const f of result.flaky.slice(0, 10)) lines.push(`  ${f}`)
+  lines.push('')
+  if (result.restless.length) {
+    lines.push(`Never settled (${result.restless.length}): DOM kept changing, judged after the timeout`)
+    for (const at of result.restless.slice(0, 10)) lines.push(`  ${at}`)
+    lines.push('')
+  }
+
+  const byReason = new Map<string, number>()
+  for (const s of result.skipped) byReason.set(s.reason, (byReason.get(s.reason) ?? 0) + 1)
+  if (byReason.size) {
+    lines.push(`Not walked: ${[...byReason].map(([r, n]) => `${n} ${r}`).join(', ')}`)
+    const destructive = result.skipped.filter((s) => s.reason === 'destructive').map((s) => s.element)
+    if (destructive.length) lines.push(`  destructive: ${[...new Set(destructive)].slice(0, 8).join(', ')}${destructive.length > 8 ? ', …' : ''}`)
+  }
+  return lines.join('\n')
+}
+
+function section(lines: string[], title: string, findings: Finding[]): void {
+  if (!findings.length) return
+  // One entry per defect: the same message on seven screens is one bug seen seven times.
+  const byMessage = new Map<string, Finding[]>()
+  for (const f of findings) byMessage.set(`${f.oracle}|${f.message}`, [...(byMessage.get(`${f.oracle}|${f.message}`) ?? []), f])
+  lines.push(`${title} (${byMessage.size})`)
+  let shown = 0
+  for (const list of byMessage.values()) {
+    if (shown++ >= MAX_PER_SECTION) break
+    const { oracle, message } = list[0]
+    lines.push(`  ${oracle.padEnd(12)} ${message}`)
+    const where = list.map((f) => f.at)
+    lines.push(`  ${''.padEnd(12)} at ${where.slice(0, 3).join(' · ')}${where.length > 3 ? ` · +${where.length - 3} more` : ''}`)
+  }
+  if (byMessage.size > MAX_PER_SECTION) lines.push(`  … ${byMessage.size - MAX_PER_SECTION} more in findings.json`)
+  lines.push('')
+}
+
+const distinct = (findings: Finding[]) => new Set(findings.map((f) => `${f.oracle}|${f.message}`)).size

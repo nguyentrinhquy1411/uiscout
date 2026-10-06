@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Zoo</title></head>
+<body>
+  <nav>
+    <a href="/clean.html">Clean page</a>
+    <a href="/broken.html">Broken page</a>
+    <a href="/dialog.html">Dialog page</a>
+    <a href="https://example.com/">External site</a>
+  </nav>
+  <main>
+    <h1>Bug zoo</h1>
+    <button id="about" type="button">About</button>
+    <p id="about-text" hidden>Pages with known defects, for testing the oracles.</p>
+  </main>
+  <script>
+    document.getElementById('about').onclick = () => { document.getElementById('about-text').hidden = false }
+  </script>
+</body></html>

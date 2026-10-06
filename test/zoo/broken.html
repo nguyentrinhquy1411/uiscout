@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Broken</title>
+<style>
+  .stage { position: relative; height: 120px; }
+  .left { position: absolute; left: 0; top: 0; width: 120px; height: 40px; }
+  .right { position: absolute; left: 60px; top: 0; width: 120px; height: 40px; }
+  .wrap { position: relative; display: inline-block; }
+  .shield { position: absolute; inset: 0; background: rgb(0 0 0 / 0.05); }
+  .tight { width: 60px; height: 24px; overflow: hidden; white-space: nowrap; }
+</style></head>
+<body>
+  <nav><a href="/">Home</a></nav>
+  <main>
+    <h1>Known defects</h1>
+    <button type="button" id="explode">Explode</button>
+    <button type="button" id="report">Load report</button>
+    <button type="button" id="log">Log problem</button>
+    <button type="button" id="delete">Delete account</button>
+    <a href="/missing.html">Missing page</a>
+    <span class="wrap"><button type="button">Covered button</button><span class="shield"></span></span>
+    <button type="button" class="tight">Clipped label text</button>
+    <div class="stage">
+      <button type="button" class="left">Left</button>
+      <button type="button" class="right">Right</button>
+    </div>
+  </main>
+  <script>
+    document.getElementById('explode').onclick = () => { throw new Error('kaboom') }
+    document.getElementById('report').onclick = () => fetch('/api/report')
+    document.getElementById('log').onclick = () => console.error('something broke')
+    document.getElementById('delete').onclick = () => fetch('/api/delete', { method: 'POST' })
+  </script>
+</body></html>
