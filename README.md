@@ -1,9 +1,9 @@
 # flowcheck
 
-Graph-driven frontend testing (design: `docs/Graph-Driven Frontend Testing — Design Doc.md`). Milestone M1, the zero-spec check: point it at a running app, it clicks every safe control on every screen it can reach, and judges each step with deterministic oracles. No plugin, no spec, no model.
+Graph-driven frontend testing (design: [`docs/design.md`](docs/design.md)). Milestone M1, the zero-spec check: point it at a running app, it clicks every safe control on every screen it can reach, and judges each step with deterministic oracles. No plugin, no spec, no model.
 
 ```sh
-pnpm dev                                   # the app, on :5173
+pnpm install
 pnpm fc check --url http://localhost:5173/ \
   --depth 2 --allow-overlap "[data-event-id]" --block "**/api/ai/**"
 ```
@@ -33,7 +33,7 @@ Writes `.flowcheck/graph.json`, `findings.json` and `report.txt`; exits 1 when t
 ## Tests
 
 ```sh
-pnpm --filter flowcheck test     # unit tests + the bug zoo
+pnpm test     # unit tests + the bug zoo
 ```
 
 `test/zoo/` holds pages with planted defects (an exception, a 500, `console.error`, a broken link, a covered button, overlapping and clipped controls, a destructive button) and a clean page. Every oracle must catch its defect and report nothing on the clean pages.
