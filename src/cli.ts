@@ -5,6 +5,7 @@ import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { compareToBaseline, diffGraphs, isEmptyDiff, loadBaseline, saveBaseline } from './baseline.ts'
 import { type FileConfig, loadConfig } from './config.ts'
+import { loadRecordings, type NetworkMode, saveRecordings } from './network.ts'
 import { crawl } from './crawl.ts'
 import { renderDiff, renderMarkdown, renderText } from './report.ts'
 import type { Graph } from './types.ts'
@@ -33,6 +34,8 @@ const USAGE = `Usage: flowcheck check [--url <url>] [options]
   --fast-forward <ms>   Timers run after each step to catch delayed navigation (default 5000, 0 = off)
   --no-a11y             Skip the axe checks
   --concurrency <n>     Nodes explored in parallel (default 4)
+  --mode <mode>         live (real backend), record (real backend, keep responses) or
+                        replay (recordings only; destructive controls are walked)
   --baseline <dir>      Accepted graph and snapshots to compare against (default ./flowcheck)
   --update              Accept this run as the new baseline instead of comparing
   --headed              Show the browser
@@ -62,6 +65,7 @@ async function main() {
       'no-a11y': { type: 'boolean', default: false },
       concurrency: { type: 'string' },
       baseline: { type: 'string' },
+      mode: { type: 'string' },
       update: { type: 'boolean', default: false },
       headed: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
@@ -89,6 +93,12 @@ async function main() {
 
   const started = Date.now()
   const now = values.now ?? file.now
+  const baselineDir = path.resolve(values.baseline ?? file.baseline ?? 'flowcheck')
+  const network = (values.mode ?? file.network ?? 'live') as NetworkMode
+  if (!['live', 'record', 'replay'].includes(network)) throw new Error(`--mode must be live, record or replay, not "${network}"`)
+  const recordingsFile = path.join(baselineDir, 'recordings.json')
+  const recordings = network === 'replay' ? await loadRecordings(recordingsFile) : {}
+  if (network === 'replay' && !Object.keys(recordings).length) process.stderr.write(`  no recordings in ${recordingsFile}: every API call will be reported\n`)
   const result = await crawl({
     url,
     maxDepth: num(values.depth) ?? file.depth,
@@ -105,12 +115,17 @@ async function main() {
     fastForwardMs: num(values['fast-forward']) ?? file.fastForwardMs,
     a11y: values['no-a11y'] ? false : file.a11y,
     concurrency: num(values.concurrency) ?? file.concurrency,
+    network,
+    recordings,
     headed: values.headed,
     log: (line) => process.stderr.write(`  ${line}\n`),
   })
 
   // The baseline (§7C, §10): accept this run, or judge it against the last accepted one.
-  const baselineDir = path.resolve(values.baseline ?? file.baseline ?? 'flowcheck')
+  if (network === 'record') {
+    await mkdir(baselineDir, { recursive: true })
+    await saveRecordings(recordingsFile, recordings)
+  }
   const against = path.relative(process.cwd(), path.join(baselineDir, 'app.graph.json'))
   let diffInfo: Parameters<typeof renderText>[1]
   if (values.update) {

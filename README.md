@@ -41,6 +41,16 @@ Setup steps: `goto` (full load), `route` (in-app, through the history API, so in
 
 `flowcheck diff a.json b.json` compares any two graphs. Each run also writes `report.md` for the pull request; see [docs/ci.md](docs/ci.md) and [examples/github-workflow.yml](examples/github-workflow.yml).
 
+## Network modes
+
+| `--mode` | Backend | Use |
+| --- | --- | --- |
+| `live` (default) | Real | First runs, local checks. Destructive controls are skipped |
+| `record` | Real | Walks like `live` and keeps every API response in `flowcheck/recordings.json` |
+| `replay` | None | Serves API calls (and non-GET form posts) from the recordings. Nothing reaches a server, so destructive controls are walked too. A call with no recording is a warning |
+
+Accept the baseline in the mode CI runs (usually `replay`): replay walks more edges than live.
+
 ## What it checks (oracle A)
 
 | Check | Fails when |

@@ -2,6 +2,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import { type Snapshots, snapshotOf } from './baseline.ts'
 import { type ContextConfig, pushRoute, runSetup } from './config.ts'
 import { elementId, fingerprintOf, locate, routeOf, safetyOf, safetyOfText } from './identity.ts'
+import { installNetworkMode, type NetworkMode, type Recordings } from './network.ts'
 import { checkA11y } from './oracles/a11y.ts'
 import { checkLayout } from './oracles/layout.ts'
 import { type MonitorOptions, StepMonitor } from './oracles/monitor.ts'
@@ -42,6 +43,10 @@ export interface CrawlOptions extends MonitorOptions {
   fastForwardMs?: number
   /** Run axe on every node. */
   a11y?: boolean
+  /** live: the real backend. record: real backend, responses kept. replay: recordings only (§6). */
+  network?: NetworkMode
+  /** Read in replay, filled in record. */
+  recordings?: Recordings
   headed?: boolean
   /** Nodes explored in parallel, each in its own browser context. */
   concurrency?: number
@@ -73,8 +78,10 @@ const VIEWPORT = { width: 1280, height: 800 }
 const DEFAULT_CONTEXT: ContextConfig = { name: 'default' }
 
 /** Node identity: the route plus whatever overlay is on top (state abstraction, §5). */
-async function nodeIdOf(page: Page, origin: string): Promise<string> {
-  const url = new URL(page.url())
+async function nodeIdOf(page: Page, origin: string, monitor?: StepMonitor): Promise<string> {
+  let url = new URL(page.url())
+  // An unreachable external site leaves the browser on its own error page.
+  if (url.protocol === 'chrome-error:' && monitor?.lastNavigation) url = new URL(monitor.lastNavigation)
   if (url.origin !== origin) return `external:${url.origin}`
   const overlay = await page.evaluate(openDialog).catch(() => '')
   const route = routeOf(url.pathname)
@@ -115,6 +122,8 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
   const fastForwardMs = options.fastForwardMs ?? 5000
   const fillText = options.fillText ?? 'flowcheck'
   const contexts = options.contexts?.length ? options.contexts : [DEFAULT_CONTEXT]
+  const network = options.network ?? 'live'
+  const recordings = options.recordings ?? {}
   const tagged = contexts.length > 1
   const log = options.log ?? (() => {})
 
@@ -163,6 +172,8 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
       permissions: ['clipboard-read', 'clipboard-write'],
     })
     await context.addInitScript(installMutationCounter)
+    await installNetworkMode(context, network, origin, recordings)
+    // Registered last so it runs first: a blocked URL never reaches the recorder.
     for (const glob of options.block ?? []) await context.route(glob, (route) => route.abort('blockedbyclient'))
     // A control that opens a new tab gets that tab closed: the walk stays in one page.
     context.on('page', (p) => {
@@ -311,7 +322,9 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
         const elId = elementId(node, fp)
         if (!elements.has(elId)) elements.set(elId, { id: elId, node, role: fp.role, name: fp.name, fingerprint: fp })
         const safety = safetyOf(fp)
-        const skip = skipReason(target, safety, origin)
+        // With every request served from recordings, nothing a destructive control sends
+        // reaches a server, so replay walks it (§5 Safety labels).
+        const skip = skipReason(target, network === 'replay' && safety === 'destructive' ? 'mutating' : safety, origin)
         if (skip) {
           skipped.push({ node: `${prefix}${node}`, element: elId, reason: skip })
           continue
@@ -331,7 +344,7 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
 
         // Enter submits the field's form through its default button; a destructive button
         // ("Delete account") must not be pressed that way when it would never be clicked.
-        const enter = !(target.submit && safetyOfText(target.submit) === 'destructive')
+        const enter = network === 'replay' || !(target.submit && safetyOfText(target.submit) === 'destructive')
         const step: Step = target.role === 'textbox' ? { kind: 'fill', fp, text: fillText, enter } : { kind: 'click', fp }
 
         // Find it again: an earlier step may have re-rendered the screen.
@@ -364,10 +377,10 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
           flaky.push(`${label}: ${failure}`)
         }
         if (!(await quiesce(page, monitor, settleMs, quiesceTimeoutMs))) restless.push(label)
-        const settledAt = await nodeIdOf(page, origin)
+        const settledAt = await nodeIdOf(page, origin, monitor)
         await fastForward(page, monitor)
 
-        const to = await nodeIdOf(page, origin)
+        const to = await nodeIdOf(page, origin, monitor)
         if (to !== node && !to.includes(' [') && !to.startsWith('external:') && step.kind === 'click') globalEdges.set(key, to)
         addEdge({
           from: node,

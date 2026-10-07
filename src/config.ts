@@ -45,6 +45,8 @@ export interface FileConfig {
   /** Timers fast-forwarded after each step, to catch delayed navigation. 0 turns it off. */
   fastForwardMs?: number
   a11y?: boolean
+  /** live (default), record or replay; recordings live in the baseline directory. */
+  network?: 'live' | 'record' | 'replay'
   /** Where the accepted graph and snapshots live (default "flowcheck"). */
   baseline?: string
 }

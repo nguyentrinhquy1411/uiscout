@@ -1,4 +1,5 @@
 import type { Page, Request } from 'playwright'
+import { NO_RECORDING } from '../network.ts'
 import type { Finding } from '../types.ts'
 
 /*
@@ -18,6 +19,8 @@ export class StepMonitor {
   findings: Finding[] = []
   /** Requests made during the current step, for the edge's api list. */
   api: string[] = []
+  /** The last top-level navigation, to name an external destination the browser couldn't load. */
+  lastNavigation = ''
   private at = ''
   private inflight = new Set<Request>()
   private readonly origin: string
@@ -37,6 +40,7 @@ export class StepMonitor {
     })
     page.on('request', (req) => {
       this.inflight.add(req)
+      if (req.isNavigationRequest() && req.frame() === page.mainFrame()) this.lastNavigation = req.url()
       if (this.isApp(req)) this.api.push(`${req.method()} ${this.pathOf(req)}`)
     })
     page.on('requestfinished', (req) => this.inflight.delete(req))
@@ -51,6 +55,8 @@ export class StepMonitor {
       const status = res.status()
       if (status < 400 || !this.isApp(res.request())) return
       const call = `${res.request().method()} ${this.pathOf(res.request())}`
+      // Replay had nothing to serve: the recordings are stale or never covered this step.
+      if (res.headers()[NO_RECORDING]) return this.add('network', 'warning', `${call} has no recording (re-record with --mode record)`)
       if (status >= 500) this.add('network', 'error', `${call} returned ${status}`)
       else if (!this.allowed(call, status)) this.add('network', 'error', `${call} returned ${status}`)
     })

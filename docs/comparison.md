@@ -51,6 +51,8 @@ With a five-line `flowcheck.config.json` (a guest and a member context, seeds `/
 
 Still missed: g15 log out and g17a external payment (skipped as destructive until replay mode), g18b `target=_blank` (listed as skipped).
 
+With M2's replay mode (`--mode record` once, then `--mode replay`) g15 (`/account → /`) and g17a (`/checkout → external:https://external.example.com`) are walked too: **34 of 35**. Only g18b, a link that opens a new tab, is listed rather than walked.
+
 ## What this decides (M0)
 
 1. **The two approaches miss opposite things.** Static extraction misses nothing it can parse and everything behind an unsupported router; runtime walking misses unlinked routes, other auth states, timers and destructive paths, and nothing else. The design doc's trust tiers (static + observed) are right: neither alone is enough.
