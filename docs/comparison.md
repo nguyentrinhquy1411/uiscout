@@ -36,6 +36,21 @@ uigraph's `map` scores **35/35** (its own gate: a node, a `must`/`may` edge, or 
 
 It also reported one network error: `POST /api/checkout returned 404` on "Buy now" — true in that environment (the sample has no backend), so an allow-list entry, not a false positive.
 
+### After M1.5 (contexts, seeds, typing, timers)
+
+With a five-line `flowcheck.config.json` (a guest and a member context, seeds `/legacy`, `/no-such-page`, `/account`), the same run scores **32 of 35**, plus 1 partial, in 37 s:
+
+| Was missed | Now |
+| --- | --- |
+| g01g `/legacy`, g06 redirect route | seed → `route` edge `/legacy → /pricing` |
+| g01h `*` | seed `/no-such-page` → the not-found node |
+| g12b, g09 | member context: `/pricing → /checkout`, `/pricing → /account` |
+| g13, g25 | guest seed `/account` → `route` edge `/account → /login` |
+| g16 timer redirect | fast-forwarded clock: `/checkout → /pricing`, marked `delayed` |
+| g20 Enter key | typing: `fill` edge `/ → /products` |
+
+Still missed: g15 log out and g17a external payment (skipped as destructive until replay mode), g18b `target=_blank` (listed as skipped).
+
 ## What this decides (M0)
 
 1. **The two approaches miss opposite things.** Static extraction misses nothing it can parse and everything behind an unsupported router; runtime walking misses unlinked routes, other auth states, timers and destructive paths, and nothing else. The design doc's trust tiers (static + observed) are right: neither alone is enough.

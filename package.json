@@ -2,17 +2,22 @@
   "name": "flowcheck",
   "private": true,
   "packageManager": "pnpm@10.33.0",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "version": "0.0.0",
   "type": "module",
   "description": "Graph-driven frontend testing: map a web app by walking it, judge every step with deterministic oracles.",
-  "bin": { "flowcheck": "./src/cli.ts" },
+  "bin": {
+    "flowcheck": "./src/cli.ts"
+  },
   "scripts": {
     "fc": "node src/cli.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "playwright": "^1.63.0"
   },
   "devDependencies": {

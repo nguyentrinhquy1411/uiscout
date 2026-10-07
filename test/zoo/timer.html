@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Timer</title></head>
+<body>
+  <nav><a href="/">Home</a></nav>
+  <main>
+    <h1>Checkout</h1>
+    <button type="button" id="place">Place order</button>
+    <p id="status"></p>
+  </main>
+  <script>
+    // Navigates 3 s after the click: only seen when timers are fast-forwarded.
+    document.getElementById('place').onclick = () => {
+      document.getElementById('status').textContent = 'Order placed, redirecting…'
+      setTimeout(() => location.assign('/clean.html'), 3000)
+    }
+  </script>
+</body></html>

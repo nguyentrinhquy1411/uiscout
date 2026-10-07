@@ -1,65 +1,91 @@
 #!/usr/bin/env node
+import { existsSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
+import { type FileConfig, loadConfig } from './config.ts'
 import { crawl } from './crawl.ts'
 import { renderText } from './report.ts'
 
 /*
  * flowcheck check --url http://localhost:5173 — the five-minute path (design doc §12):
- * no plugin, no recordings, a live app, only safe edges. Writes the graph and the
+ * no plugin, no recordings, a live app, only safe edges. Settings come from
+ * flowcheck.config.json when present; flags override them. Writes the graph and the
  * findings under --out and prints the report. Exits 1 when there are errors.
  */
 
-const USAGE = `Usage: flowcheck check --url <url> [options]
+const USAGE = `Usage: flowcheck check [--url <url>] [options]
 
-  --url <url>          Entry URL of a running app
-  --out <dir>          Where to write graph.json, findings.json, report.txt (default .flowcheck)
-  --depth <n>          Clicks deep from the entry (default 2)
-  --max-steps <n>      Total clicks (default 250)
-  --now <iso>          Fixed time the app sees (default: real time)
-  --tz <zone>          Time zone (default Asia/Ho_Chi_Minh)
-  --allow-4xx <list>   Comma-separated expected 4xx: "404" or "GET /api/me"
-  --block <globs>      Comma-separated URL globs to abort, e.g. "**/api/ai/**"
+  --config <file>       Settings file (default ./flowcheck.config.json when it exists)
+  --url <url>           Entry URL of a running app
+  --out <dir>           Where to write graph.json, findings.json, report.txt (default .flowcheck)
+  --depth <n>           Actions deep from the entry (default 2)
+  --max-steps <n>       Total actions (default 250)
+  --seeds <paths>       Comma-separated routes no link reaches, e.g. "/legacy,/404"
+  --now <iso>           Time the app starts at (default: real time)
+  --tz <zone>           Time zone (default Asia/Ho_Chi_Minh)
+  --allow-4xx <list>    Comma-separated expected 4xx: "404" or "GET /api/me"
+  --block <globs>       Comma-separated URL globs to abort, e.g. "**/api/ai/**"
   --allow-overlap <css> Controls that overlap by design, e.g. "[data-event-id]"
-  --concurrency <n>    Nodes explored in parallel (default 4)
-  --headed             Show the browser
+  --fast-forward <ms>   Timers run after each step to catch delayed navigation (default 5000, 0 = off)
+  --no-a11y             Skip the axe checks
+  --concurrency <n>     Nodes explored in parallel (default 4)
+  --headed              Show the browser
+
+Contexts (personas with setup steps) are configured in the settings file only.
 `
+
+const list = (s: string | undefined) => s?.split(',').map((x) => x.trim()).filter(Boolean)
+const num = (s: string | undefined) => (s === undefined ? undefined : Number(s))
 
 async function main() {
   const { positionals, values } = parseArgs({
     allowPositionals: true,
     options: {
+      config: { type: 'string' },
       url: { type: 'string' },
       out: { type: 'string', default: '.flowcheck' },
-      depth: { type: 'string', default: '2' },
-      'max-steps': { type: 'string', default: '250' },
+      depth: { type: 'string' },
+      'max-steps': { type: 'string' },
+      seeds: { type: 'string' },
       now: { type: 'string' },
       tz: { type: 'string' },
       'allow-4xx': { type: 'string' },
       'allow-overlap': { type: 'string' },
       block: { type: 'string' },
-      concurrency: { type: 'string', default: '4' },
+      'fast-forward': { type: 'string' },
+      'no-a11y': { type: 'boolean', default: false },
+      concurrency: { type: 'string' },
       headed: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
   })
-  if (values.help || positionals[0] !== 'check' || !values.url) {
+  const configPath = values.config ?? (existsSync('flowcheck.config.json') ? 'flowcheck.config.json' : undefined)
+  const file: FileConfig = configPath ? await loadConfig(configPath) : {}
+  const url = values.url ?? file.url
+  if (values.help || positionals[0] !== 'check' || !url) {
     process.stdout.write(USAGE)
     process.exit(values.help ? 0 : 2)
   }
 
   const started = Date.now()
+  const now = values.now ?? file.now
   const result = await crawl({
-    url: values.url,
-    maxDepth: Number(values.depth),
-    maxSteps: Number(values['max-steps']),
-    now: values.now ? new Date(values.now) : undefined,
-    timezoneId: values.tz,
-    allow4xx: values['allow-4xx']?.split(',').map((s) => s.trim()).filter(Boolean),
-    allowOverlap: values['allow-overlap'],
-    block: values.block?.split(',').map((s) => s.trim()).filter(Boolean),
-    concurrency: Number(values.concurrency),
+    url,
+    maxDepth: num(values.depth) ?? file.depth,
+    maxSteps: num(values['max-steps']) ?? file.maxSteps,
+    seeds: list(values.seeds) ?? file.seeds,
+    contexts: file.contexts,
+    now: now ? new Date(now) : undefined,
+    timezoneId: values.tz ?? file.timezone,
+    allow4xx: list(values['allow-4xx']) ?? file.allow4xx,
+    ignoreConsole: file.ignoreConsole,
+    allowOverlap: values['allow-overlap'] ?? file.allowOverlap,
+    block: list(values.block) ?? file.block,
+    fillText: file.fillText,
+    fastForwardMs: num(values['fast-forward']) ?? file.fastForwardMs,
+    a11y: values['no-a11y'] ? false : file.a11y,
+    concurrency: num(values.concurrency) ?? file.concurrency,
     headed: values.headed,
     log: (line) => process.stderr.write(`  ${line}\n`),
   })

@@ -1,36 +1,46 @@
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
+import { type ContextConfig, pushRoute, runSetup } from './config.ts'
 import { elementId, fingerprintOf, locate, routeOf, safetyOf } from './identity.ts'
+import { checkA11y } from './oracles/a11y.ts'
 import { checkLayout } from './oracles/layout.ts'
 import { type MonitorOptions, StepMonitor } from './oracles/monitor.ts'
 import { collectElements, hitPoint, installMutationCounter, mutationCount, openDialog } from './page-scripts.ts'
-import type { Finding, Fingerprint, Graph, GraphEdge, GraphElement, GraphNode, RawElement } from './types.ts'
+import type { Finding, Fingerprint, Graph, GraphEdge, GraphElement, GraphNode, RawElement, Step } from './types.ts'
 
 /*
- * The zero-spec runner (design doc §6, M1): start at one URL, click every safe
- * control on every screen it can reach, and judge each step. Each screen is
- * explored in a fresh browser context, so local data (IndexedDB) starts clean.
+ * The zero-spec runner (design doc §6): start at one URL, act on every safe
+ * control on every screen it can reach, once per context, and judge each step.
+ * Each screen is explored in a fresh browser context, so local data (IndexedDB)
+ * starts clean.
  */
 
 export interface CrawlOptions extends MonitorOptions {
   url: string
-  /** How many clicks deep from the entry to explore. */
+  /** How many actions deep from the entry to explore. */
   maxDepth?: number
-  /** Total clicks across the run. */
+  /** Total actions across the run. */
   maxSteps?: number
-  /** The fixed wall-clock time the app sees, for deterministic dates. */
+  /** The wall-clock time the app starts at, for deterministic dates. */
   now?: Date
   timezoneId?: string
   /** DOM must stay unchanged this long, with no requests in flight, to count as settled. */
   settleMs?: number
   /** Give up waiting for quiet after this long and judge the state anyway. */
   quiesceTimeoutMs?: number
-  /**
-   * URL globs never sent (aborted before they leave the browser), e.g. a paid AI
-   * API the walk must not spend quota on.
-   */
+  /** URL globs aborted before they leave the browser, e.g. a paid AI API. */
   block?: string[]
   /** Selector for controls that overlap by design, e.g. stacked calendar events. */
   allowOverlap?: string
+  /** Personas to walk under (§5). Default: one context named "default" with no setup. */
+  contexts?: ContextConfig[]
+  /** Routes no link reaches, entered through the history API from the entry. */
+  seeds?: string[]
+  /** What the runner types into text fields before pressing Enter. */
+  fillText?: string
+  /** Timers fast-forwarded after each step, to catch delayed navigation (0 = off). */
+  fastForwardMs?: number
+  /** Run axe on every node. */
+  a11y?: boolean
   headed?: boolean
   /** Nodes explored in parallel, each in its own browser context. */
   concurrency?: number
@@ -57,6 +67,7 @@ export interface CrawlResult {
 }
 
 const VIEWPORT = { width: 1280, height: 800 }
+const DEFAULT_CONTEXT: ContextConfig = { name: 'default' }
 
 /** Node identity: the route plus whatever overlay is on top (state abstraction, §5). */
 async function nodeIdOf(page: Page, origin: string): Promise<string> {
@@ -84,6 +95,13 @@ async function quiesce(page: Page, monitor: StepMonitor, settleMs: number, timeo
   return false
 }
 
+/** A readable label for a step, used in node paths and edge IDs. */
+function stepLabel(step: Step, elId: string): string {
+  if (step.kind === 'route') return `route ${step.path}`
+  if (step.kind === 'fill') return `fill ${elId}`
+  return elId
+}
+
 export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
   const entry = new URL(options.url)
   const origin = entry.origin
@@ -91,10 +109,13 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
   const maxSteps = options.maxSteps ?? 250
   const settleMs = options.settleMs ?? 250
   const quiesceTimeoutMs = options.quiesceTimeoutMs ?? 4000
+  const fastForwardMs = options.fastForwardMs ?? 5000
+  const fillText = options.fillText ?? 'flowcheck'
+  const contexts = options.contexts?.length ? options.contexts : [DEFAULT_CONTEXT]
+  const tagged = contexts.length > 1
   const log = options.log ?? (() => {})
 
   const nodes = new Map<string, GraphNode>()
-  const routes = new Map<string, Fingerprint[]>()
   const elements = new Map<string, GraphElement>()
   const edges = new Map<string, GraphEdge>()
   const findings: Finding[] = []
@@ -103,8 +124,28 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
   const restless: string[] = []
   const flaky: string[] = []
   let steps = 0
-  /** Route reached by each control fingerprint, ignoring which screen it was on. */
-  const globalEdges = new Map<string, string>()
+
+  /** Records an observed edge, or adds this context to one already seen. */
+  const addEdge = (e: Pick<GraphEdge, 'from' | 'to' | 'action' | 'safety' | 'api'> & { delayed?: boolean }, context: string) => {
+    const label = e.action.type === 'route' ? `route ${e.action.path}` : e.action.type === 'fill' ? `fill ${e.action.element}` : e.action.element
+    const id = `${e.from} -> ${e.to} : ${label}`
+    const existing = edges.get(id)
+    if (existing) {
+      if (!existing.contexts.includes(context)) existing.contexts.push(context)
+      return
+    }
+    edges.set(id, {
+      id,
+      from: e.from,
+      to: e.to,
+      action: e.action,
+      contexts: [context],
+      ...(e.delayed && { delayed: true }),
+      safety: e.safety,
+      trust: ['observed'],
+      api: [...new Set(e.api)].sort(),
+    })
+  }
 
   const browser: Browser = await chromium.launch({ headless: !options.headed })
 
@@ -126,187 +167,245 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
     return context
   }
 
-  /** Opens the app and replays a path; returns the page sitting on the target node. */
-  const open = async (context: BrowserContext, path: Fingerprint[], label: string) => {
-    const page = await context.newPage()
-    if (options.now) await page.clock.setFixedTime(options.now)
-    const monitor = new StepMonitor(page, origin, options)
-    monitor.begin(`load ${label}`)
-    await page.goto(entry.href, { waitUntil: 'domcontentloaded' })
-    if (!(await quiesce(page, monitor, settleMs, quiesceTimeoutMs))) restless.push(`load ${label}`)
-    for (const fp of path) {
-      const found = locate(fp, await page.evaluate(collectElements))
-      if (!found) return { page, monitor, ok: false }
-      await page.locator(`[data-fc-i="${found.el.i}"]`).click({ timeout: 3000 }).catch(() => {})
-      await quiesce(page, monitor, settleMs, quiesceTimeoutMs)
+  /** Performs one step. Returns why it failed, or null. */
+  const perform = async (page: Page, step: Step): Promise<string | null> => {
+    if (step.kind === 'route') {
+      const before = await page.evaluate(mutationCount)
+      await page.evaluate(pushRoute, step.path)
+      await page.waitForTimeout(100)
+      // A router that ignores popstate: fall back to a full load.
+      if ((await page.evaluate(mutationCount)) === before) await page.goto(new URL(step.path, origin).href, { waitUntil: 'domcontentloaded' })
+      return null
     }
-    return { page, monitor, ok: true }
+    const found = locate(step.fp, await page.evaluate(collectElements))
+    if (!found) return 'not found'
+    if (step.kind === 'fill') {
+      const field = page.locator(`[data-fc-i="${found.el.i}"]`)
+      return field.fill(step.text, { timeout: 3000 }).then(() => field.press('Enter')).then(() => null, (err: Error) => clickFailure(err.message))
+    }
+    return clickAt(page, found.el.i)
   }
 
-  const addNode = (id: string, url: string, path: Fingerprint[], pathIds: string[]) => {
-    if (nodes.has(id)) return false
-    nodes.set(id, { id, url, path: pathIds })
-    routes.set(id, path)
-    return true
+  /** Lets timers run: delayed navigation (a redirect 3 s after "Order placed") shows up now. */
+  const fastForward = async (page: Page, monitor: StepMonitor) => {
+    if (fastForwardMs <= 0) return
+    await page.clock.fastForward(fastForwardMs).catch(() => {})
+    await quiesce(page, monitor, settleMs, quiesceTimeoutMs)
   }
 
-  const queue: Array<{ node: string; depth: number }> = []
+  for (const ctx of contexts) {
+    const prefix = tagged ? `[${ctx.name}] ` : ''
+    const paths = new Map<string, Step[]>()
+    /** Route reached by each control fingerprint, ignoring which screen it was on. */
+    const globalEdges = new Map<string, string>()
+    const queue: Array<{ node: string; depth: number }> = []
 
-  // The entry node.
-  {
-    const context = await newContext()
-    const { page, monitor } = await open(context, [], entry.pathname)
-    const id = await nodeIdOf(page, origin)
-    addNode(id, new URL(page.url()).pathname, [], [])
-    queue.push({ node: id, depth: 0 })
-    findings.push(...monitor.findings)
-    await context.close()
-  }
-
-  /** Click every control on one node, in its own browser context. */
-  const explore = async (node: string, depth: number) => {
-    const path = routes.get(node)!
-    const pathIds = nodes.get(node)!.path
-    log(`node ${node} (depth ${depth})`)
-
-    let context = await newContext()
-    let { page, monitor, ok } = await open(context, path, node)
-    if (!ok || (await nodeIdOf(page, origin)) !== node) {
-      findings.push({ oracle: 'transition', severity: 'warning', at: `load ${node}`, message: 'Could not reach this node again by replaying its path' })
-      await context.close()
-      return
-    }
-
-    // Judge the screen itself once, on arrival.
-    const targets = await page.evaluate(collectElements)
-    for (const issue of await page.evaluate(checkLayout, options.allowOverlap ?? '')) {
-      const severity = issue.kind === 'covered' ? 'error' : 'warning'
-      findings.push({ oracle: issue.kind === 'covered' ? 'dead-control' : 'layout', severity, at: `load ${node}`, message: issue.detail })
-    }
-
-    // A fresh context, not just a reload: an earlier click may have saved state
-    // (a collapsed sidebar in localStorage) that would hide what comes next.
-    const reset = async () => {
-      findings.push(...monitor.findings)
-      await context.close()
-      context = await newContext()
-      ;({ page, monitor } = await open(context, path, node))
-    }
-
-    /** Back to this node the cheap way (Escape, then history) before reloading and replaying. */
-    const returnHere = async () => {
-      if ((await nodeIdOf(page, origin)) === node) return
-      if (await page.evaluate(openDialog).catch(() => '')) {
-        await page.keyboard.press('Escape')
+    /** Opens the app in this context and replays a path; the page sits on the target node. */
+    const open = async (context: BrowserContext, path: Step[], label: string) => {
+      const page = await context.newPage()
+      if (fastForwardMs > 0) await page.clock.install(options.now ? { time: options.now } : undefined)
+      else if (options.now) await page.clock.setFixedTime(options.now)
+      const monitor = new StepMonitor(page, origin, options)
+      monitor.begin(`${prefix}load ${label}`)
+      await page.goto(entry.href, { waitUntil: 'domcontentloaded' })
+      if (ctx.setup?.length) await runSetup(page, ctx.setup, origin)
+      if (!(await quiesce(page, monitor, settleMs, quiesceTimeoutMs))) restless.push(`${prefix}load ${label}`)
+      for (const step of path) {
+        if (await perform(page, step)) return { page, monitor, ok: false }
         await quiesce(page, monitor, settleMs, quiesceTimeoutMs)
-        if ((await nodeIdOf(page, origin)) === node) return
+        await fastForward(page, monitor)
       }
-      if (routeOf(new URL(page.url()).pathname) !== routeOf(nodes.get(node)!.url)) {
-        await page.goBack({ waitUntil: 'domcontentloaded' }).catch(() => null)
-        await quiesce(page, monitor, settleMs, quiesceTimeoutMs)
-        if ((await nodeIdOf(page, origin)) === node) return
-      }
-      await reset()
+      return { page, monitor, ok: true }
     }
 
-    for (const target of targets) {
-      const fp = fingerprintOf(target)
-      const elId = elementId(node, fp)
-      if (!elements.has(elId)) elements.set(elId, { id: elId, node, role: fp.role, name: fp.name, fingerprint: fp })
-      const safety = safetyOf(fp)
-      const skip = skipReason(target, safety, origin)
-      if (skip) {
-        skipped.push({ node, element: elId, reason: skip })
-        continue
+    const addNode = (id: string, url: string, path: Step[], labels: string[]) => {
+      const existing = nodes.get(id)
+      if (existing && !existing.contexts.includes(ctx.name)) existing.contexts.push(ctx.name)
+      if (paths.has(id)) return false
+      paths.set(id, path)
+      if (!existing) nodes.set(id, { id, url, path: labels, contexts: [ctx.name] })
+      return true
+    }
+
+    // The entry node, then every seed route, as starting points.
+    for (const start of [null, ...(options.seeds ?? [])]) {
+      const context = await newContext()
+      try {
+        const path: Step[] = start ? [{ kind: 'route', path: start }] : []
+        const { page, monitor } = await open(context, path, start ?? entry.pathname)
+        const id = await nodeIdOf(page, origin)
+        if (addNode(id, new URL(page.url()).pathname, path, path.map((s) => stepLabel(s, '')))) queue.push({ node: id, depth: 0 })
+        // A seed that lands somewhere else is a redirect worth keeping: "/legacy" → "/pricing".
+        if (start && routeOf(start) !== id) addEdge({ from: routeOf(start), to: id, action: { type: 'route', path: start }, safety: 'safe', api: monitor.api }, ctx.name)
+        findings.push(...monitor.findings)
+      } catch (err) {
+        findings.push({ oracle: 'transition', severity: 'error', at: `${prefix}load ${start ?? entry.pathname}`, message: (err as Error).message })
       }
-      // A control on every screen (the app rail) that already led to a route elsewhere
-      // would lead there again: walking it from each screen only costs time.
-      const key = globalKey(fp)
-      const seenTo = globalEdges.get(key)
-      if (seenTo && seenTo !== node) {
-        skipped.push({ node, element: elId, reason: 'repeat' })
-        continue
-      }
-      if (steps >= maxSteps) {
-        skipped.push({ node, element: elId, reason: 'budget' })
-        continue
+      await context.close()
+    }
+
+    /** Act on every control of one node, in its own browser context. */
+    const explore = async (node: string, depth: number) => {
+      const path = paths.get(node)!
+      const labels = nodes.get(node)!.path
+      log(`${prefix}node ${node} (depth ${depth})`)
+
+      let context = await newContext()
+      let { page, monitor, ok } = await open(context, path, node)
+      /**
+       * Steps taken on this page that stayed on this node (typed text, a toggle).
+       * A node found later may depend on them, so they become part of its path.
+       */
+      let dirt: Step[] = []
+      if (!ok || (await nodeIdOf(page, origin)) !== node) {
+        findings.push({ oracle: 'transition', severity: 'warning', at: `${prefix}load ${node}`, message: 'Could not reach this node again by replaying its path' })
+        await context.close()
+        return
       }
 
-      // Find it again: an earlier click may have re-rendered the screen.
-      await returnHere()
-      let found = locate(fp, await page.evaluate(collectElements))
-      if (!found) {
-        await reset()
-        found = locate(fp, await page.evaluate(collectElements))
+      // Judge the screen itself once, on arrival.
+      const targets = await page.evaluate(collectElements)
+      for (const issue of await page.evaluate(checkLayout, options.allowOverlap ?? '')) {
+        const severity = issue.kind === 'covered' ? 'error' : 'warning'
+        findings.push({ oracle: issue.kind === 'covered' ? 'dead-control' : 'layout', severity, at: `${prefix}load ${node}`, message: issue.detail })
       }
-      if (!found) {
-        skipped.push({ node, element: elId, reason: 'not-found' })
-        continue
-      }
-      if (!found.exact) healed.push(elId)
+      if (options.a11y !== false) findings.push(...(await checkA11y(page, `${prefix}load ${node}`)))
 
-      steps++
-      const label = `${node} → click ${elId}`
-      monitor.begin(label)
-      const failure = await clickAt(page, found.el.i)
-      if (failure) {
-        // Flake policy (§6): retry once from a fresh context. A pass there means the
-        // failure depended on what earlier steps left behind; listed, never blocking.
+      // A fresh context, not just a reload: an earlier step may have saved state
+      // (a collapsed sidebar in localStorage) that would hide what comes next.
+      const reset = async () => {
+        findings.push(...monitor.findings)
+        await context.close()
+        context = await newContext()
+        ;({ page, monitor } = await open(context, path, node))
+        dirt = []
+      }
+
+      /** Back to this node the cheap way (Escape, then history) before reloading and replaying. */
+      const returnHere = async () => {
+        if ((await nodeIdOf(page, origin)) === node) return
+        if (await page.evaluate(openDialog).catch(() => '')) {
+          await page.keyboard.press('Escape')
+          await quiesce(page, monitor, settleMs, quiesceTimeoutMs)
+          if ((await nodeIdOf(page, origin)) === node) return
+        }
+        if (routeOf(new URL(page.url()).pathname) !== routeOf(nodes.get(node)!.url)) {
+          await page.goBack({ waitUntil: 'domcontentloaded' }).catch(() => null)
+          await quiesce(page, monitor, settleMs, quiesceTimeoutMs)
+          // Unknown how much of the node's own state survived the round trip: start clean.
+          if ((await nodeIdOf(page, origin)) === node && dirt.length === 0) return
+        }
         await reset()
-        const again = locate(fp, await page.evaluate(collectElements))
-        monitor.begin(label)
-        const retry = again ? await clickAt(page, again.el.i) : 'not found on retry'
-        if (retry) {
-          monitor.findings.push({ oracle: 'dead-control', severity: 'error', at: label, message: `Click failed: ${failure}` })
+      }
+
+      for (const target of targets) {
+        const fp = fingerprintOf(target)
+        const elId = elementId(node, fp)
+        if (!elements.has(elId)) elements.set(elId, { id: elId, node, role: fp.role, name: fp.name, fingerprint: fp })
+        const safety = safetyOf(fp)
+        const skip = skipReason(target, safety, origin)
+        if (skip) {
+          skipped.push({ node: `${prefix}${node}`, element: elId, reason: skip })
           continue
         }
-        flaky.push(`${label}: ${failure}`)
-      }
-      if (!(await quiesce(page, monitor, settleMs, quiesceTimeoutMs))) restless.push(label)
+        // A control on every screen (the app rail) that already led to a route elsewhere
+        // would lead there again: walking it from each screen only costs time.
+        const key = globalKey(fp)
+        const seenTo = globalEdges.get(key)
+        if (seenTo && seenTo !== node) {
+          skipped.push({ node: `${prefix}${node}`, element: elId, reason: 'repeat' })
+          continue
+        }
+        if (steps >= maxSteps) {
+          skipped.push({ node: `${prefix}${node}`, element: elId, reason: 'budget' })
+          continue
+        }
 
-      const to = await nodeIdOf(page, origin)
-      if (to !== node && !to.includes(' [') && !to.startsWith('external:')) globalEdges.set(key, to)
-      const edgeId = `${node} -> ${to} : ${elId}`
-      edges.set(edgeId, {
-        id: edgeId,
-        from: node,
-        to,
-        action: { type: 'click', element: elId },
-        safety,
-        trust: ['observed'],
-        api: [...new Set(monitor.api)],
-      })
-      if (to !== node && !to.startsWith('external:') && depth + 1 <= maxDepth) {
-        if (addNode(to, new URL(page.url()).pathname, [...path, fp], [...pathIds, elId])) queue.push({ node: to, depth: depth + 1 })
+        const step: Step = target.role === 'textbox' ? { kind: 'fill', fp, text: fillText } : { kind: 'click', fp }
+
+        // Find it again: an earlier step may have re-rendered the screen.
+        await returnHere()
+        let found = locate(fp, await page.evaluate(collectElements))
+        if (!found) {
+          await reset()
+          found = locate(fp, await page.evaluate(collectElements))
+        }
+        if (!found) {
+          skipped.push({ node: `${prefix}${node}`, element: elId, reason: 'not-found' })
+          continue
+        }
+        if (!found.exact) healed.push(elId)
+
+        steps++
+        const label = `${prefix}${node} → ${step.kind} ${elId}`
+        monitor.begin(label)
+        const failure = await perform(page, step)
+        if (failure) {
+          // Flake policy (§6): retry once from a fresh context. A pass there means the
+          // failure depended on what earlier steps left behind; listed, never blocking.
+          await reset()
+          monitor.begin(label)
+          const retry = await perform(page, step)
+          if (retry) {
+            monitor.findings.push({ oracle: 'dead-control', severity: 'error', at: label, message: `${step.kind === 'fill' ? 'Typing' : 'Click'} failed: ${failure}` })
+            continue
+          }
+          flaky.push(`${label}: ${failure}`)
+        }
+        if (!(await quiesce(page, monitor, settleMs, quiesceTimeoutMs))) restless.push(label)
+        const settledAt = await nodeIdOf(page, origin)
+        await fastForward(page, monitor)
+
+        const to = await nodeIdOf(page, origin)
+        if (to !== node && !to.includes(' [') && !to.startsWith('external:') && step.kind === 'click') globalEdges.set(key, to)
+        addEdge({
+          from: node,
+          to,
+          action: step.kind === 'fill' ? { type: 'fill', element: elId, text: fillText } : { type: 'click', element: elId },
+          delayed: settledAt !== to,
+          safety,
+          api: monitor.api,
+        }, ctx.name)
+        if (to !== node && !to.startsWith('external:') && depth + 1 <= maxDepth) {
+          const via = [...dirt, step]
+          if (addNode(to, new URL(page.url()).pathname, [...path, ...via], [...labels, ...via.map((s) => stepLabel(s, elementId(node, 'fp' in s ? s.fp : fp)))])) {
+            queue.push({ node: to, depth: depth + 1 })
+          }
+        }
+        if (to === node) dirt.push(step)
+      }
+      findings.push(...monitor.findings)
+      await context.close()
+    }
+
+    // Nodes are independent (each has its own context), so several are explored at once.
+    let active = 0
+    const worker = async () => {
+      for (;;) {
+        const next = steps < maxSteps ? queue.shift() : undefined
+        if (!next) {
+          if (active === 0 || steps >= maxSteps) return
+          await new Promise((r) => setTimeout(r, 50))
+          continue
+        }
+        active++
+        try {
+          await explore(next.node, next.depth)
+        } catch (err) {
+          findings.push({ oracle: 'transition', severity: 'warning', at: `${prefix}load ${next.node}`, message: `Exploration stopped: ${(err as Error).message.split('\n')[0]}` })
+        } finally {
+          active--
+        }
       }
     }
-    findings.push(...monitor.findings)
-    await context.close()
+    await Promise.all(Array.from({ length: options.concurrency ?? 4 }, worker))
+    for (const { node } of queue) skipped.push({ node: `${prefix}${node}`, element: '*', reason: 'budget' })
   }
 
-  // Nodes are independent (each has its own context), so several are explored at once.
-  let active = 0
-  const worker = async () => {
-    for (;;) {
-      const next = steps < maxSteps ? queue.shift() : undefined
-      if (!next) {
-        if (active === 0 || steps >= maxSteps) return
-        await new Promise((r) => setTimeout(r, 50))
-        continue
-      }
-      active++
-      try {
-        await explore(next.node, next.depth)
-      } finally {
-        active--
-      }
-    }
-  }
-  await Promise.all(Array.from({ length: options.concurrency ?? 4 }, worker))
-
-  for (const { node } of queue) skipped.push({ node, element: '*', reason: 'budget' })
   await browser.close()
 
+  for (const n of nodes.values()) n.contexts.sort()
+  for (const e of edges.values()) e.contexts.sort()
   return {
     graph: {
       version: 1,
@@ -328,7 +427,7 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
 function skipReason(el: RawElement, safety: string, origin: string): Skip['reason'] | null {
   if (safety === 'destructive') return 'destructive'
   if (el.disabled) return 'disabled'
-  if (el.role === 'textbox' || el.role === 'combobox' || el.role === 'slider') return 'input'
+  if (el.role === 'combobox' || el.role === 'slider') return 'input'
   if (el.target === '_blank') return 'new-tab'
   if (el.href && /^(https?:)?\/\//.test(el.href) && !el.href.startsWith(origin)) return 'external'
   if (el.href && /^(mailto|tel):/.test(el.href)) return 'external'
@@ -347,11 +446,11 @@ const globalKey = (fp: Fingerprint) => `${fp.role}|${fp.name}|${fp.parents}|${fp
 function clickFailure(message: string): string {
   // Playwright colours its call log for terminals.
   const log = message.replace(/\x1b\[[0-9;]*m/g, '').split('\n').map((l) => l.trim().replace(/^- /, ''))
-  const reason = [...log].reverse().find((l) => /intercepts pointer events|not visible|not stable|not enabled|detached|outside of the viewport/.test(l))
+  const reason = [...log].reverse().find((l) => /intercepts pointer events|not visible|not stable|not enabled|not editable|detached|outside of the viewport/.test(l))
   return (reason ?? log.find(Boolean) ?? message).slice(0, 200)
 }
 
-/** Opening the same screen from two paths reports its layout issues twice; keep one. */
+/** Opening the same screen from two paths reports its findings twice; keep one. */
 function dedupe(findings: Finding[]): Finding[] {
   const seen = new Set<string>()
   return findings.filter((f) => {

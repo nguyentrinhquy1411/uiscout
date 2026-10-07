@@ -96,7 +96,8 @@ export function collectElements(): RawElement[] {
   }
 
   // An open overlay (modal, menu, popover) owns the screen: only its controls are reachable.
-  const OVERLAY = '[role=dialog],[role=alertdialog],dialog[open],[aria-modal=true],[role=menu],[role=listbox]'
+  // A toast is a non-modal alertdialog (often aria-hidden until hovered): it never owns the screen.
+  const OVERLAY = ':is([role=dialog],[role=alertdialog],dialog[open],[aria-modal=true],[role=menu],[role=listbox]):not([aria-modal=false],[aria-hidden=true])'
   const overlays = [...document.querySelectorAll(OVERLAY)].filter((o) => visibleRect(o) && !o.parentElement?.closest(OVERLAY))
   const scope: ParentNode = overlays.at(-1) ?? document
 
@@ -134,7 +135,7 @@ export function collectElements(): RawElement[] {
 
 /** The accessible name of the topmost open dialog, or '' when none is open. */
 export function openDialog(): string {
-  const dialogs = [...document.querySelectorAll('[role=dialog],[role=alertdialog],dialog[open],[aria-modal=true],[role=menu]')]
+  const dialogs = [...document.querySelectorAll(':is([role=dialog],[role=alertdialog],dialog[open],[aria-modal=true],[role=menu]):not([aria-modal=false],[aria-hidden=true])')]
     .filter((d) => {
       const r = d.getBoundingClientRect()
       return r.width > 0 && r.height > 0 && getComputedStyle(d).visibility !== 'hidden'

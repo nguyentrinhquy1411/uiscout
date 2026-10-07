@@ -33,11 +33,21 @@ export interface Fingerprint {
   cell: string
 }
 
+/** One thing the runner does to move the app: the unit of a path and of an edge. */
+export type Step =
+  | { kind: 'click'; fp: Fingerprint }
+  /** Type into a field, then press Enter. */
+  | { kind: 'fill'; fp: Fingerprint; text: string }
+  /** In-app navigation through the history API, for routes no link reaches. */
+  | { kind: 'route'; path: string }
+
 export interface GraphNode {
   id: string
   url: string
-  /** Shortest action path from the entry that reaches this node. */
+  /** Shortest action path from the entry that reaches this node, as readable labels. */
   path: string[]
+  /** Contexts (personas) in which this node was reached. */
+  contexts: string[]
 }
 
 export interface GraphElement {
@@ -52,7 +62,11 @@ export interface GraphEdge {
   id: string
   from: string
   to: string
-  action: { type: 'click'; element: string }
+  action: { type: 'click' | 'fill'; element: string; text?: string } | { type: 'route'; path: string }
+  /** Contexts in which this edge was observed. */
+  contexts: string[]
+  /** The move happened only after timers ran (fast-forwarded), not right after the action. */
+  delayed?: boolean
   safety: Safety
   trust: Trust[]
   /** Requests made while the step ran: "GET /api/x 200". */

@@ -4,6 +4,8 @@
   <nav><a href="/">Home</a></nav>
   <main>
     <button type="button" id="open">Open settings</button>
+    <!-- A toast: role=alertdialog but non-modal and hidden from AT. Not an overlay. -->
+    <div role="alertdialog" aria-modal="false" aria-hidden="true" style="position:fixed;right:8px;bottom:8px">Saved</div>
     <div id="dlg" role="dialog" aria-label="Settings" hidden>
       <button type="button" id="close">Close</button>
       <button type="button" id="dark">Dark mode</button>

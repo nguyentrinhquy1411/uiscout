@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Members</title></head>
+<body>
+  <main id="m"></main>
+  <script>
+    // The same route shows different controls to a guest and to a member.
+    const m = document.getElementById('m')
+    if (localStorage.getItem('user')) {
+      m.innerHTML = '<h1>Members</h1><a href="/clean.html">Members area</a>'
+    } else {
+      m.innerHTML = '<h1>Members</h1><a href="/login.html">Please log in</a>'
+    }
+  </script>
+</body></html>

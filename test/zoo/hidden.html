@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Hidden</title></head>
+<body>
+  <main>
+    <h1>No link leads here</h1>
+    <button type="button" id="secret">Secret</button>
+  </main>
+  <script>document.getElementById('secret').onclick = () => { throw new Error('hidden bug') }</script>
+</body></html>
