@@ -1,4 +1,5 @@
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
+import { type Snapshots, snapshotOf } from './baseline.ts'
 import { type ContextConfig, pushRoute, runSetup } from './config.ts'
 import { elementId, fingerprintOf, locate, routeOf, safetyOf, safetyOfText } from './identity.ts'
 import { checkA11y } from './oracles/a11y.ts'
@@ -64,6 +65,8 @@ export interface CrawlResult {
   restless: string[]
   /** Steps that failed, then passed when retried from a fresh context. */
   flaky: string[]
+  /** Structural snapshot of every node, keyed like findings: "[context] node". */
+  snapshots: Snapshots
 }
 
 const VIEWPORT = { width: 1280, height: 800 }
@@ -123,6 +126,7 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
   const healed: string[] = []
   const restless: string[] = []
   const flaky: string[] = []
+  const snapshots: Snapshots = {}
   let steps = 0
 
   /** Records an observed edge, or adds this context to one already seen. */
@@ -268,6 +272,7 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
 
       // Judge the screen itself once, on arrival.
       const targets = await page.evaluate(collectElements)
+      snapshots[`${prefix}${node}`] = snapshotOf(targets)
       for (const issue of await page.evaluate(checkLayout, options.allowOverlap ?? '')) {
         const severity = issue.kind === 'covered' ? 'error' : 'warning'
         findings.push({ oracle: issue.kind === 'covered' ? 'dead-control' : 'layout', severity, at: `${prefix}load ${node}`, message: issue.detail })
@@ -427,6 +432,7 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
     steps,
     restless,
     flaky,
+    snapshots,
   }
 }
 

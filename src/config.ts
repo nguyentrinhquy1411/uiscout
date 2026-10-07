@@ -45,6 +45,8 @@ export interface FileConfig {
   /** Timers fast-forwarded after each step, to catch delayed navigation. 0 turns it off. */
   fastForwardMs?: number
   a11y?: boolean
+  /** Where the accepted graph and snapshots live (default "flowcheck"). */
+  baseline?: string
 }
 
 export async function loadConfig(path: string): Promise<FileConfig> {

@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 import { existsSync } from 'node:fs'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
+import { compareToBaseline, diffGraphs, isEmptyDiff, loadBaseline, saveBaseline } from './baseline.ts'
 import { type FileConfig, loadConfig } from './config.ts'
 import { crawl } from './crawl.ts'
-import { renderText } from './report.ts'
+import { renderDiff, renderText } from './report.ts'
+import type { Graph } from './types.ts'
 
 /*
  * flowcheck check --url http://localhost:5173 — the five-minute path (design doc §12):
@@ -15,6 +17,7 @@ import { renderText } from './report.ts'
  */
 
 const USAGE = `Usage: flowcheck check [--url <url>] [options]
+       flowcheck diff <before.graph.json> <after.graph.json>
 
   --config <file>       Settings file (default ./flowcheck.config.json when it exists)
   --url <url>           Entry URL of a running app
@@ -30,6 +33,8 @@ const USAGE = `Usage: flowcheck check [--url <url>] [options]
   --fast-forward <ms>   Timers run after each step to catch delayed navigation (default 5000, 0 = off)
   --no-a11y             Skip the axe checks
   --concurrency <n>     Nodes explored in parallel (default 4)
+  --baseline <dir>      Accepted graph and snapshots to compare against (default ./flowcheck)
+  --update              Accept this run as the new baseline instead of comparing
   --headed              Show the browser
 
 Contexts (personas with setup steps) are configured in the settings file only.
@@ -56,10 +61,24 @@ async function main() {
       'fast-forward': { type: 'string' },
       'no-a11y': { type: 'boolean', default: false },
       concurrency: { type: 'string' },
+      baseline: { type: 'string' },
+      update: { type: 'boolean', default: false },
       headed: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
   })
+  if (positionals[0] === 'diff') {
+    const [a, b] = positionals.slice(1)
+    if (!a || !b) {
+      process.stdout.write(USAGE)
+      process.exit(2)
+    }
+    const read = async (f: string) => JSON.parse(await readFile(f, 'utf8')) as Graph
+    const diff = diffGraphs(await read(a), await read(b))
+    process.stdout.write(`${renderDiff(diff, a).join('\n')}\n`)
+    process.exit(isEmptyDiff(diff) ? 0 : 1)
+  }
+
   const configPath = values.config ?? (existsSync('flowcheck.config.json') ? 'flowcheck.config.json' : undefined)
   const file: FileConfig = configPath ? await loadConfig(configPath) : {}
   const url = values.url ?? file.url
@@ -90,13 +109,31 @@ async function main() {
     log: (line) => process.stderr.write(`  ${line}\n`),
   })
 
+  // The baseline (§7C, §10): accept this run, or judge it against the last accepted one.
+  const baselineDir = path.resolve(values.baseline ?? file.baseline ?? 'flowcheck')
+  const against = path.relative(process.cwd(), path.join(baselineDir, 'app.graph.json'))
+  let diffInfo: Parameters<typeof renderText>[1]
+  if (values.update) {
+    await saveBaseline(baselineDir, result.graph, result.snapshots)
+  } else if (existsSync(baselineDir)) {
+    const { findings, diff } = compareToBaseline(await loadBaseline(baselineDir), result.graph, result.snapshots)
+    result.findings.push(...findings)
+    if (diff) {
+      diffInfo = { diff, against }
+      const changed = diff.addedNodes.length + diff.removedNodes.length + diff.addedEdges.length + diff.removedEdges.length
+      // Like a lockfile: a graph that moved must be reviewed and committed, not ignored.
+      if (changed) result.findings.push({ oracle: 'structure', severity: 'error', at: 'graph', message: `${against} is out of date (${changed} nodes or edges changed): review the diff, then run with --update and commit` })
+    }
+  }
+
   const out = path.resolve(values.out)
   await mkdir(out, { recursive: true })
-  const text = renderText(result)
+  const text = renderText(result, diffInfo)
   await writeFile(path.join(out, 'graph.json'), `${JSON.stringify(result.graph, null, 2)}\n`)
   await writeFile(path.join(out, 'findings.json'), `${JSON.stringify({ findings: result.findings, skipped: result.skipped, healed: result.healed, restless: result.restless, flaky: result.flaky }, null, 2)}\n`)
   await writeFile(path.join(out, 'report.txt'), `${text}\n`)
-  process.stdout.write(`${text}\n\nWrote ${path.relative(process.cwd(), out) || '.'}/ in ${((Date.now() - started) / 1000).toFixed(1)}s\n`)
+  const accepted = values.update ? `, accepted as baseline in ${path.relative(process.cwd(), baselineDir) || '.'}/` : ''
+  process.stdout.write(`${text}\n\nWrote ${path.relative(process.cwd(), out) || '.'}/${accepted} in ${((Date.now() - started) / 1000).toFixed(1)}s\n`)
   process.exit(result.findings.some((f) => f.severity === 'error') ? 1 : 0)
 }
 

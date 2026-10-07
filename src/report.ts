@@ -1,3 +1,4 @@
+import type { GraphDiff } from './baseline.ts'
 import type { CrawlResult } from './crawl.ts'
 import type { Finding } from './types.ts'
 
@@ -8,7 +9,26 @@ import type { Finding } from './types.ts'
 
 const MAX_PER_SECTION = 25
 
-export function renderText(result: CrawlResult): string {
+const edgeLabel = (e: GraphDiff['addedEdges'][number]) =>
+  `${e.from} -> ${e.to} : ${e.action.type === 'route' ? `route ${e.action.path}` : `${e.action.type} ${e.action.element}`}`
+
+/** The structural difference from the committed graph, capped like everything else. */
+export function renderDiff(diff: GraphDiff, against: string): string[] {
+  const lines = [`Graph diff (vs ${against})`]
+  const rows = [
+    ...diff.addedNodes.map((n) => `  + node   ${n}`),
+    ...diff.removedNodes.map((n) => `  - node   ${n}`),
+    ...diff.retargeted.map(({ before, after }) => `  ~ edge   ${edgeLabel(before)}  now → ${after.to}`),
+    ...diff.addedEdges.map((e) => `  + edge   ${edgeLabel(e)}`),
+    ...diff.removedEdges.map((e) => `  - edge   ${edgeLabel(e)}`),
+  ]
+  if (!rows.length) return [...lines, '  (no change)', '']
+  lines.push(...rows.slice(0, MAX_PER_SECTION))
+  if (rows.length > MAX_PER_SECTION) lines.push(`  … ${rows.length - MAX_PER_SECTION} more`)
+  return [...lines, '']
+}
+
+export function renderText(result: CrawlResult, diff?: { diff: GraphDiff; against: string }): string {
   const errors = result.findings.filter((f) => f.severity === 'error')
   const warnings = result.findings.filter((f) => f.severity === 'warning')
   const { nodes, edges } = result.graph
@@ -16,8 +36,10 @@ export function renderText(result: CrawlResult): string {
 
   lines.push(`flowcheck: ${distinct(errors)} errors, ${distinct(warnings)} warnings · ${nodes.length} nodes, ${edges.length} edges, ${result.steps} steps`)
   lines.push('')
+  if (diff) lines.push(...renderDiff(diff.diff, diff.against))
   section(lines, 'Errors', errors)
   section(lines, 'Warnings', warnings)
+  section(lines, 'Changes', result.findings.filter((f) => f.severity === 'info'))
 
   if (result.healed.length) {
     lines.push(`Healed lookups (${result.healed.length}): found by similarity, not exact match`)
@@ -37,7 +59,7 @@ export function renderText(result: CrawlResult): string {
   const byReason = new Map<string, number>()
   for (const s of result.skipped) byReason.set(s.reason, (byReason.get(s.reason) ?? 0) + 1)
   if (byReason.size) {
-    lines.push(`Not walked: ${[...byReason].map(([r, n]) => `${n} ${r}`).join(', ')}`)
+    lines.push(`Not walked: ${[...byReason].sort(([a], [b]) => a.localeCompare(b)).map(([r, n]) => `${n} ${r}`).join(', ')}`)
     const destructive = result.skipped.filter((s) => s.reason === 'destructive').map((s) => s.element)
     if (destructive.length) lines.push(`  destructive: ${[...new Set(destructive)].slice(0, 8).join(', ')}${destructive.length > 8 ? ', …' : ''}`)
   }
