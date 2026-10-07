@@ -88,6 +88,25 @@ The report shows intent coverage: each line is linked (its rule passed), failing
 
 **Fuzzing**: `flowcheck fuzz --seed 7 --runs 10 --length 25` takes seeded random walks, checks the rules and the generic oracles after every step, and shrinks each failure to the shortest sequence that still fails. On the zoo a broken toast found after a random walk shrank to the single step "click Save draft". Same seed, same walk.
 
+## Widget adapters (M4)
+
+A complex widget (a calendar grid, a gantt, a canvas editor) is one node with an adapter: semantic actions done with real gestures, state read from a debug hook the app publishes in test builds, and invariants checked after every action of a seeded random sequence. A failing sequence is shrunk to the shortest that still fails.
+
+```ts
+// timegrid.adapter.ts
+import type { WidgetAdapter } from 'flowcheck/adapter'
+export default {
+  id: 'calendar.TimeGrid',
+  harness: '/calendar?view=week',
+  read: (page) => page.evaluate(() => window.__flowcheck.calendar.getState()),
+  actions: { move: (page, { id, minutes }) => /* drag the block */ },
+  generate: (state, random) => [/* valid next actions */],
+  invariants: [(prev, next, step) => /* true or a message */],
+} satisfies WidgetAdapter<State, Actions>
+```
+
+`flowcheck adapters --url … --seed 11 --runs 6 --length 12` runs every `*.adapter.ts`. The runner creates `window.__flowcheck` before the app loads, so apps publish hooks only when it's there. [`examples/calendar/timegrid.adapter.ts`](examples/calendar/timegrid.adapter.ts) drives the calendar app's week grid (move, resize, zoom) with five invariants: an event never ends before it starts; each block is drawn where its times say, within 2 px, on its day; a move keeps the duration and lands on the 15-minute grid; a resize keeps the start and at least 15 minutes; zoom changes no data. On the real app 72 random actions passed; with a planted bug (a move into the afternoon drops 15 minutes, reachable only by dragging) it failed in 3 of 4 runs, each shrunk to one move.
+
 ## Network modes
 
 | `--mode` | Backend | Use |

@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
+import { loadAdapters, runAdapter } from './adapter.ts'
 import { changedSince, type Selection, selectAffected } from './affected.ts'
 import { compareToBaseline, diffGraphs, isEmptyDiff, loadBaseline, saveBaseline } from './baseline.ts'
 import { type FileConfig, loadConfig } from './config.ts'
@@ -23,6 +24,7 @@ import type { Graph } from './types.ts'
 const USAGE = `Usage: flowcheck check [--url <url>] [options]
        flowcheck diff <before.graph.json> <after.graph.json>
        flowcheck fuzz [--url <url>] [--seed <n>] [--runs <n>] [--length <n>]
+       flowcheck adapters [--url <url>] [--dir <dir>] [--seed <n>] [--runs <n>] [--length <n>]
 
   --config <file>       Settings file (default ./flowcheck.config.json when it exists)
   --url <url>           Entry URL of a running app
@@ -77,6 +79,7 @@ async function main() {
       update: { type: 'boolean', default: false },
       affected: { type: 'string' },
       seed: { type: 'string' },
+      dir: { type: 'string' },
       runs: { type: 'string' },
       length: { type: 'string' },
       headed: { type: 'boolean', default: false },
@@ -98,6 +101,31 @@ async function main() {
   const configPath = values.config ?? (existsSync('flowcheck.config.json') ? 'flowcheck.config.json' : undefined)
   const file: FileConfig = configPath ? await loadConfig(configPath) : {}
   const url = values.url ?? file.url
+  if (positionals[0] === 'adapters' && url) {
+    // Widget adapters (§8): seeded action sequences, invariants after every action, shrunk failures.
+    const seed = num(values.seed) ?? Math.floor(Math.random() * 1e9)
+    const adapters = await loadAdapters(path.resolve(values.dir ?? '.'))
+    if (!adapters.length) throw new Error('no *.adapter.ts files found')
+    const now = values.now ?? file.now
+    const lines: string[] = []
+    let failed = 0
+    for (const adapter of adapters) {
+      const failures = await runAdapter(adapter, {
+        url, seed, runs: num(values.runs), length: num(values.length),
+        now: now ? new Date(now) : undefined,
+        log: (line) => process.stderr.write(`  ${line}\n`),
+      })
+      failed += failures.length
+      lines.push(`${adapter.id}: ${failures.length ? `${failures.length} failure${failures.length === 1 ? '' : 's'}` : 'ok'}`)
+      for (const f of failures) {
+        lines.push(`  ${f.violation}`, `  seed ${f.seed}, shrunk from ${f.original} to ${f.steps.length} action${f.steps.length === 1 ? '' : 's'}:`)
+        lines.push(...f.steps.map((s, i) => `    ${i + 1}. ${s.action} ${JSON.stringify(s.args)}`))
+      }
+    }
+    process.stdout.write(`flowcheck adapters (seed ${seed})\n${lines.join('\n')}\n`)
+    process.exit(failed ? 1 : 0)
+  }
+
   if (positionals[0] === 'fuzz' && url) {
     // Seeded random walks against the invariants and the generic oracles (§7B); nightly.
     const seed = num(values.seed) ?? Math.floor(Math.random() * 1e9)

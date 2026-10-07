@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Bars</title>
+<style>
+  #track { position: relative; width: 1000px; height: 120px; margin: 20px; background: #f4f4f4; }
+  .bar { position: absolute; height: 30px; background: steelblue; cursor: grab; }
+</style></head>
+<body>
+  <main><div id="track"></div></main>
+  <script>
+    // A tiny gantt: bars are dragged with the mouse; 1 px = 1 minute.
+    const tasks = [{ id: 'a', start: 60, end: 180, row: 0 }, { id: 'b', start: 400, end: 460, row: 1 }, { id: 'c', start: 700, end: 760, row: 2 }]
+    const track = document.getElementById('track')
+    const render = () => {
+      track.innerHTML = ''
+      for (const t of tasks) {
+        const el = document.createElement('div')
+        el.className = 'bar'
+        el.dataset.id = t.id
+        el.style.left = t.start + 'px'
+        el.style.width = (t.end - t.start) + 'px'
+        el.style.top = (t.row * 40) + 'px'
+        track.appendChild(el)
+      }
+    }
+    window.__flowcheck = window.__flowcheck || {}
+    window.__flowcheck.bars = { getState: () => tasks.map((t) => ({ ...t })) }
+    let drag = null
+    track.addEventListener('pointerdown', (e) => {
+      const id = e.target.dataset && e.target.dataset.id
+      if (id) drag = { id, x: e.clientX }
+    })
+    window.addEventListener('pointerup', (e) => {
+      if (!drag) return
+      const t = tasks.find((x) => x.id === drag.id)
+      const dx = Math.round((e.clientX - drag.x) / 10) * 10
+      t.start += dx
+      // Planted bug: past minute 300 the end isn't moved by the full delta.
+      t.end += t.start > 300 ? dx - 10 : dx
+      drag = null
+      render()
+    })
+    render()
+  </script>
+</body></html>

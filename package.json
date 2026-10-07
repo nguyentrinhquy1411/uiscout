@@ -37,6 +37,10 @@
     "./vite": {
       "types": "./src/vite-plugin.d.ts",
       "default": "./src/vite-plugin.js"
+    },
+    "./adapter": {
+      "types": "./dist/adapter.d.ts",
+      "default": "./dist/adapter.js"
     }
   },
   "files": [
