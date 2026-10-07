@@ -261,8 +261,14 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
   for (const ctx of contexts) {
     const prefix = tagged ? `[${ctx.name}] ` : ''
     const paths = new Map<string, Step[]>()
-    /** Route reached by each control fingerprint, ignoring which screen it was on. */
-    const globalEdges = new Map<string, string>()
+    /**
+     * Controls already on the entry screen when it loads (the app rail, a search
+     * button): walked there, skipped everywhere else. Fixed before any exploring
+     * starts, so which controls are skipped never depends on which parallel worker
+     * got where first: two runs of the same app walk the same edges.
+     */
+    const globals = new Set<string>()
+    let entryNode = ''
     const queue: Array<{ node: string; depth: number }> = []
 
     /** Opens the app in this context and replays a path; the page sits on the target node. */
@@ -310,6 +316,10 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
         const path: Step[] = start ? [{ kind: 'route', path: start }] : []
         const { page, monitor } = await open(context, path, start ?? entry.pathname)
         const id = await nodeIdOf(page, origin)
+        if (!start) {
+          entryNode = id
+          for (const el of await page.evaluate(collectElements)) globals.add(globalKey(fingerprintOf(el)))
+        }
         if (addNode(id, new URL(page.url()).pathname, path, path.map((s) => stepLabel(s, '')))) queue.push({ node: id, depth: 0 })
         // A seed that lands somewhere else is a redirect worth keeping: "/legacy" → "/pricing".
         if (start && routeOf(start) !== id) addEdge({ from: routeOf(start), to: id, action: { type: 'route', path: start }, safety: 'safe', api: monitor.api }, ctx.name)
@@ -393,11 +403,9 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
           skipped.push({ node: `${prefix}${node}`, element: elId, reason: skip })
           continue
         }
-        // A control on every screen (the app rail) that already led to a route elsewhere
-        // would lead there again: walking it from each screen only costs time.
+        // A control the entry screen already has is walked there only.
         const key = globalKey(fp)
-        const seenTo = globalEdges.get(key)
-        if (seenTo && seenTo !== node) {
+        if (node !== entryNode && globals.has(key)) {
           skipped.push({ node: `${prefix}${node}`, element: elId, reason: 'repeat' })
           continue
         }
@@ -448,7 +456,6 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
         if (rules.length) judgeTrace([...pathStates, before, after, await observe(page, ctx.name, '(timers)')], label, monitor.findings)
 
         const to = await nodeIdOf(page, origin, monitor)
-        if (to !== node && !to.includes(' [') && !to.startsWith('external:') && step.kind === 'click') globalEdges.set(key, to)
         addEdge({
           from: node,
           to,
