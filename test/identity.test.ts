@@ -21,6 +21,11 @@ describe('identity', () => {
     expect(moved?.el.i).toBe(2)
   })
 
+  it('never heals onto a different control just because role and place agree', () => {
+    expect(locate(fingerprintOf(raw({ name: 'Save' })), [raw({ name: 'Delete' })])).toBeNull()
+    expect(locate(fingerprintOf(raw({ name: 'Save' })), [raw({ name: 'Save changes' })])?.exact).toBe(false)
+  })
+
   it('refuses a match that is only vaguely alike', () => {
     expect(locate(fingerprintOf(raw()), [raw({ name: 'Delete', role: 'link', tag: 'a', parents: 'nav' })])).toBeNull()
     expect(similarity(fingerprintOf(raw()), fingerprintOf(raw()))).toBe(1)

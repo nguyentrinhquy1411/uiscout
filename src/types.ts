@@ -91,9 +91,11 @@ export interface Graph {
 }
 
 export interface Finding {
-  oracle: 'script' | 'network' | 'dead-control' | 'layout' | 'a11y' | 'transition' | 'structure'
+  oracle: 'script' | 'network' | 'dead-control' | 'layout' | 'a11y' | 'transition' | 'structure' | 'rule'
   severity: Severity
   /** Where it happened: an edge id, or "load <node>". */
   at: string
   message: string
+  /** For a rule violation: the steps from the entry to the state where it broke. */
+  trace?: string[]
 }

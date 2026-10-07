@@ -36,18 +36,23 @@ export function elementId(node: string, fp: Fingerprint): string {
 const WEIGHTS = { testId: 3, name: 2, role: 1, tag: 0.5, parents: 1, cell: 0.5 }
 const MAX_SCORE = Object.values(WEIGHTS).reduce((a, b) => a + b, 0)
 
-/** 0–1: how alike two fingerprints are. */
+/**
+ * 0–1: how alike two fingerprints are. With no test ID on either side the test ID
+ * weighs nothing, rather than counting as agreement: otherwise any two buttons in
+ * the same region ("Save", "Delete") would match on role and place alone.
+ */
 export function similarity(a: Fingerprint, b: Fingerprint): number {
+  const noIds = !a.testId && !b.testId
+  const max = noIds ? MAX_SCORE - WEIGHTS.testId : MAX_SCORE
   let s = 0
-  // Both without a test ID agree as much as both with the same one.
-  if (a.testId === b.testId) s += WEIGHTS.testId
+  if (!noIds && a.testId === b.testId) s += WEIGHTS.testId
   if (a.name === b.name) s += WEIGHTS.name
   else if (a.name && b.name && (a.name.includes(b.name) || b.name.includes(a.name))) s += WEIGHTS.name * 0.5
   if (a.role === b.role) s += WEIGHTS.role
   if (a.tag === b.tag) s += WEIGHTS.tag
   if (a.parents === b.parents) s += WEIGHTS.parents
   if (a.cell === b.cell) s += WEIGHTS.cell
-  return s / MAX_SCORE
+  return s / max
 }
 
 export const MATCH_THRESHOLD = 0.7

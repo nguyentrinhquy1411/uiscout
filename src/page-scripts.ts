@@ -201,3 +201,15 @@ export function hitPoint(i: number): { x: number; y: number } | null {
   }
   return null
 }
+
+/** What a rule can read besides the controls: the URL, the app's clock, and values it exposes. */
+export function observePage(): { url: string; time: number; reads: Record<string, unknown> } {
+  const hook = (window as unknown as { __flowcheck?: { read?: () => Record<string, unknown> } }).__flowcheck
+  let reads: Record<string, unknown> = {}
+  try {
+    reads = hook?.read?.() ?? {}
+  } catch {
+    // A broken hook reads as nothing; the rule that needs it will say so.
+  }
+  return { url: location.pathname + location.search, time: Date.now(), reads }
+}

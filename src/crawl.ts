@@ -6,7 +6,8 @@ import { installNetworkMode, type NetworkMode, type Recordings } from './network
 import { checkA11y } from './oracles/a11y.ts'
 import { checkLayout } from './oracles/layout.ts'
 import { type MonitorOptions, StepMonitor } from './oracles/monitor.ts'
-import { collectElements, hitPoint, installMutationCounter, mutationCount, openDialog } from './page-scripts.ts'
+import { collectElements, hitPoint, installMutationCounter, mutationCount, observePage, openDialog } from './page-scripts.ts'
+import { check, type ObservedState, type Rule } from './rules.ts'
 import type { Finding, Fingerprint, Graph, GraphEdge, GraphElement, GraphNode, RawElement, Step } from './types.ts'
 
 /*
@@ -55,6 +56,8 @@ export interface CrawlOptions extends MonitorOptions {
    * Keys are like snapshot keys: "[context] node", or just "node" with one context.
    */
   only?: Record<string, Step[]>
+  /** Invariants (oracle B) checked on every path walked. */
+  rules?: Rule[]
   log?: (line: string) => void
 }
 
@@ -79,6 +82,8 @@ export interface CrawlResult {
   snapshots: Snapshots
   /** The steps that reach each node, keyed like snapshots. */
   replays: Record<string, Step[]>
+  /** Rules checked, and how many paths broke each. */
+  ruleResults: Record<string, { paths: number; violations: number }>
 }
 
 const VIEWPORT = { width: 1280, height: 800 }
@@ -169,6 +174,35 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
     })
   }
 
+  const rules = options.rules ?? []
+  const ruleResults: CrawlResult['ruleResults'] = Object.fromEntries(rules.map((r) => [r.name, { paths: 0, violations: 0 }]))
+
+  /** A state for rules to read (oracle B); skipped entirely when there are no rules. */
+  const observe = async (page: Page, context: string, step: string): Promise<ObservedState | null> => {
+    if (!rules.length) return null
+    const seen = await page.evaluate(observePage).catch(() => null)
+    if (!seen) return null
+    const node = await nodeIdOf(page, origin)
+    const elements: ObservedState['elements'] = {}
+    for (const el of await page.evaluate(collectElements).catch(() => [])) {
+      elements[elementId(node, fingerprintOf(el))] = { role: el.role, name: el.name, disabled: el.disabled }
+    }
+    return { context, node, url: seen.url, time: seen.time, step, elements, reads: seen.reads }
+  }
+
+  /** Checks every rule on one path; a violation is an error carrying the steps that led to it. */
+  const judgeTrace = (trace: Array<ObservedState | null>, at: string, into: Finding[]) => {
+    const states = trace.filter((s): s is ObservedState => s !== null)
+    if (!states.length) return
+    for (const rule of rules) {
+      ruleResults[rule.name].paths++
+      const v = check(rule, states)
+      if (!v) continue
+      ruleResults[rule.name].violations++
+      into.push({ oracle: 'rule', severity: 'error', at, message: `${v.rule}: ${v.message}`, trace: v.trace })
+    }
+  }
+
   const browser: Browser = await chromium.launch({ headless: !options.headed })
 
   const newContext = async (): Promise<BrowserContext> => {
@@ -203,6 +237,9 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
     }
     const found = locate(step.fp, await page.evaluate(collectElements))
     if (!found) return 'not found'
+    // Judge what will actually be acted on, not what was asked for: a healed lookup
+    // (or a tampered paths.json) must never land on a destructive control.
+    if (network !== 'replay' && safetyOf(fingerprintOf(found.el)) === 'destructive') return `refused: matched destructive "${found.el.name}"`
     if (step.kind === 'fill') {
       const field = page.locator(`[data-fc-i="${found.el.i}"]`)
       return field
@@ -237,12 +274,15 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
       await page.goto(entry.href, { waitUntil: 'domcontentloaded' })
       if (ctx.setup?.length) await runSetup(page, ctx.setup, origin)
       if (!(await quiesce(page, monitor, settleMs, quiesceTimeoutMs))) restless.push(`${prefix}load ${label}`)
+      const states: Array<ObservedState | null> = [await observe(page, ctx.name, 'load')]
       for (const step of path) {
-        if (await perform(page, step)) return { page, monitor, ok: false }
+        if (await perform(page, step)) return { page, monitor, ok: false, states }
         await quiesce(page, monitor, settleMs, quiesceTimeoutMs)
+        states.push(await observe(page, ctx.name, stepLabel(step, 'fp' in step ? elementId('', step.fp).replace(/^\./, '') : '')))
         await fastForward(page, monitor)
+        states.push(await observe(page, ctx.name, '(timers)'))
       }
-      return { page, monitor, ok: true }
+      return { page, monitor, ok: true, states }
     }
 
     const addNode = (id: string, url: string, path: Step[], labels: string[]) => {
@@ -286,7 +326,7 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
       log(`${prefix}node ${node} (depth ${depth})`)
 
       let context = await newContext()
-      let { page, monitor, ok } = await open(context, path, node)
+      let { page, monitor, ok, states: pathStates } = await open(context, path, node)
       /**
        * Steps taken on this page that stayed on this node (typed text, a toggle).
        * A node found later may depend on them, so they become part of its path.
@@ -319,7 +359,7 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
         findings.push(...monitor.findings)
         await context.close()
         context = await newContext()
-        ;({ page, monitor } = await open(context, path, node))
+        ;({ page, monitor, states: pathStates } = await open(context, path, node))
         dirt = []
       }
 
@@ -385,6 +425,7 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
 
         steps++
         const label = `${prefix}${node} → ${step.kind} ${elId}`
+        const before = await observe(page, ctx.name, '(before)')
         monitor.begin(label)
         const failure = await perform(page, step)
         if (failure) {
@@ -401,7 +442,9 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
         }
         if (!(await quiesce(page, monitor, settleMs, quiesceTimeoutMs))) restless.push(label)
         const settledAt = await nodeIdOf(page, origin, monitor)
+        const after = await observe(page, ctx.name, `${step.kind} ${elId}`)
         await fastForward(page, monitor)
+        if (rules.length) judgeTrace([...pathStates, before, after, await observe(page, ctx.name, '(timers)')], label, monitor.findings)
 
         const to = await nodeIdOf(page, origin, monitor)
         if (to !== node && !to.includes(' [') && !to.startsWith('external:') && step.kind === 'click') globalEdges.set(key, to)
@@ -470,6 +513,7 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
     flaky,
     snapshots,
     replays,
+    ruleResults,
   }
 }
 

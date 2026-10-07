@@ -4,7 +4,7 @@ import { COMMENT_MARKER, renderMarkdown } from '../src/report.ts'
 
 const result = (findings: CrawlResult['findings']): CrawlResult => ({
   graph: { version: 1, entry: '/', nodes: [{ id: '/', url: '/', path: [], contexts: ['default'] }], elements: [], edges: [] },
-  findings, skipped: [], healed: [], steps: 3, restless: [], flaky: [], snapshots: {}, replays: {},
+  findings, skipped: [], healed: [], steps: 3, restless: [], flaky: [], snapshots: {}, replays: {}, ruleResults: {},
 })
 
 describe('pull request comment', () => {
