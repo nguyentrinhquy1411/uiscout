@@ -20,6 +20,8 @@ export interface RawElement {
   href: string | null
   target: string | null
   disabled: boolean
+  /** For a field: the name of the button Enter would press (its form's default submit), if any. */
+  submit: string | null
   box: { x: number; y: number; w: number; h: number }
 }
 
@@ -36,8 +38,8 @@ export interface Fingerprint {
 /** One thing the runner does to move the app: the unit of a path and of an edge. */
 export type Step =
   | { kind: 'click'; fp: Fingerprint }
-  /** Type into a field, then press Enter. */
-  | { kind: 'fill'; fp: Fingerprint; text: string }
+  /** Type into a field; press Enter unless that would submit through a destructive button. */
+  | { kind: 'fill'; fp: Fingerprint; text: string; enter: boolean }
   /** In-app navigation through the history API, for routes no link reaches. */
   | { kind: 'route'; path: string }
 
@@ -82,7 +84,7 @@ export interface Graph {
 }
 
 export interface Finding {
-  oracle: 'script' | 'network' | 'dead-control' | 'layout' | 'a11y' | 'transition'
+  oracle: 'script' | 'network' | 'dead-control' | 'layout' | 'a11y' | 'transition' | 'structure'
   severity: Severity
   /** Where it happened: an edge id, or "load <node>". */
   at: string

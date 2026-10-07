@@ -1,6 +1,6 @@
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
 import { type ContextConfig, pushRoute, runSetup } from './config.ts'
-import { elementId, fingerprintOf, locate, routeOf, safetyOf } from './identity.ts'
+import { elementId, fingerprintOf, locate, routeOf, safetyOf, safetyOfText } from './identity.ts'
 import { checkA11y } from './oracles/a11y.ts'
 import { checkLayout } from './oracles/layout.ts'
 import { type MonitorOptions, StepMonitor } from './oracles/monitor.ts'
@@ -181,7 +181,10 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
     if (!found) return 'not found'
     if (step.kind === 'fill') {
       const field = page.locator(`[data-fc-i="${found.el.i}"]`)
-      return field.fill(step.text, { timeout: 3000 }).then(() => field.press('Enter')).then(() => null, (err: Error) => clickFailure(err.message))
+      return field
+        .fill(step.text, { timeout: 3000 })
+        .then(() => (step.enter ? field.press('Enter') : undefined))
+        .then(() => null, (err: Error) => clickFailure(err.message))
     }
     return clickAt(page, found.el.i)
   }
@@ -321,7 +324,10 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
           continue
         }
 
-        const step: Step = target.role === 'textbox' ? { kind: 'fill', fp, text: fillText } : { kind: 'click', fp }
+        // Enter submits the field's form through its default button; a destructive button
+        // ("Delete account") must not be pressed that way when it would never be clicked.
+        const enter = !(target.submit && safetyOfText(target.submit) === 'destructive')
+        const step: Step = target.role === 'textbox' ? { kind: 'fill', fp, text: fillText, enter } : { kind: 'click', fp }
 
         // Find it again: an earlier step may have re-rendered the screen.
         await returnHere()

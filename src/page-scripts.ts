@@ -127,6 +127,12 @@ export function collectElements(): RawElement[] {
       href: el.getAttribute('href'),
       target: el.getAttribute('target'),
       disabled: (el as HTMLButtonElement).disabled === true || el.getAttribute('aria-disabled') === 'true',
+      // Enter in a field presses its form's default button: the runner must judge that button too.
+      submit: (() => {
+        const form = (el as HTMLInputElement).form
+        const button = form?.querySelector('button[type=submit],button:not([type]),input[type=submit]')
+        return button ? nameOf(button) || 'submit' : null
+      })(),
       box: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) },
     })
   }

@@ -76,7 +76,10 @@ const MUTATING = /\b(save|create|add|new|import|upload|archive|restore|duplicate
  * no undo, so destructive controls are never walked.
  */
 export function safetyOf(fp: Fingerprint): Safety {
-  const text = `${fp.name} ${fp.testId ?? ''}`
+  return safetyOfText(`${fp.name} ${fp.testId ?? ''}`)
+}
+
+export function safetyOfText(text: string): Safety {
   if (DESTRUCTIVE.test(text)) return 'destructive'
   if (MUTATING.test(text)) return 'mutating'
   return 'safe'

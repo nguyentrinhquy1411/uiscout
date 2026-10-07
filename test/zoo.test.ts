@@ -125,6 +125,12 @@ describe('safety and noise', () => {
     expect(result.skipped).toContainEqual(expect.objectContaining({ reason: 'destructive', node: '/broken.html' }))
   })
 
+  it('types into a field of a destructive form but never submits it', () => {
+    const fill = result.graph.edges.find((e) => e.action.type === 'fill' && elOf(e).includes('account-name'))
+    expect(fill).toBeTruthy()
+    expect(zoo.hits).not.toContain('POST /api/delete')
+  })
+
   it('does not follow external links', () => {
     expect(result.skipped).toContainEqual(expect.objectContaining({ reason: 'external' }))
     expect(result.graph.nodes.some((n) => n.id.startsWith('external:'))).toBe(false)

@@ -17,6 +17,8 @@
     <button type="button" id="log">Log problem</button>
     <button type="button" id="delete">Delete account</button>
     <a href="/missing.html">Missing page</a>
+    <!-- Enter in this field would press "Delete account": the runner may type, never submit. -->
+    <form id="danger"><input aria-label="Account name"><button type="submit">Delete account</button></form>
     <span class="wrap"><button type="button">Covered button</button><span class="shield"></span></span>
     <button type="button" class="tight">Clipped label text</button>
     <button type="button" id="nameless"><svg width="16" height="16" aria-hidden="true"></svg></button>
@@ -30,5 +32,6 @@
     document.getElementById('report').onclick = () => fetch('/api/report')
     document.getElementById('log').onclick = () => console.error('something broke')
     document.getElementById('delete').onclick = () => fetch('/api/delete', { method: 'POST' })
+    document.getElementById('danger').onsubmit = (e) => { e.preventDefault(); fetch('/api/delete', { method: 'POST' }) }
   </script>
 </body></html>
