@@ -1,71 +1,71 @@
-# 5. Baseline: so sánh giữa các lần chạy
+# 5. Baselines: comparing runs
 
-Oracle A bắt lỗi "app hỏng". Baseline bắt lỗi "app khác với hôm qua": một nút biến mất, một link đổi đích, một màn không còn tới được.
+The generic oracles catch "the app is broken". A baseline catches "the app is different from yesterday": a control gone, a link that leads elsewhere, a screen that can't be reached any more.
 
-## Vòng làm việc
+## The loop
 
 ```sh
-flowcheck check --update        # 1. chấp nhận trạng thái hiện tại làm baseline
-git add flowcheck/ && git commit -m "flowcheck baseline"
+uiscout check --update          # 1. accept the current state as the baseline
+git add uiscout/ && git commit -m "uiscout baseline"
 
-# ... sửa code ...
+# ... change code ...
 
-flowcheck check                 # 2. so với baseline: lệch là báo
-git diff flowcheck/             # 3. nếu thay đổi là cố ý:
-flowcheck check --update        #    chấp nhận lại, review diff, commit
+uiscout check                   # 2. compare with the baseline
+git diff uiscout/               # 3. if the change is intended:
+uiscout check --update          #    accept it, review the diff, commit
 ```
 
-## Baseline gồm gì
+## What a baseline contains
 
-Thư mục `flowcheck/` (đổi bằng `--baseline <dir>` hoặc khoá `baseline` trong config):
+The `uiscout/` directory (change it with `--baseline <dir>` or the `baseline` config key):
 
-| File | Nội dung | Commit |
+| File | Contents | Commit |
 | --- | --- | --- |
-| `app.graph.json` | Toàn bộ màn và edge, sắp xếp cố định | Có |
-| `snapshots/<màn>.txt` | Mỗi màn (và mỗi context) một file, mỗi dòng một nút | Có |
-| `paths.json` | Đường đi tới từng màn, để chạy riêng một số màn | Có |
-| `recordings.json` | Response API khi chạy `--mode record` ([network](06-network.md)) | Có, sau khi xem lại |
+| `app.graph.json` | Every screen and edge, in a fixed order | Yes |
+| `snapshots/<screen>.txt` | One file per screen (and context), one line per control | Yes |
+| `paths.json` | How each screen was reached, for running only some screens | Yes |
+| `recordings.json` | API responses from `--mode record` ([network](06-network.md)) | Yes, after review |
 
-`git diff flowcheck/` chính là phần review: dòng mất trong snapshot là nút biến mất, edge mất trong graph là đường đi biến mất.
+`git diff uiscout/` is the review: a line gone from a snapshot is a control gone, an edge gone from the graph is a path gone.
 
-## Những gì bị báo
+## What is reported
 
-| Thay đổi | Mức | Ví dụ thông điệp |
+| Change | Severity | Example message |
 | --- | --- | --- |
-| Nút biến mất | Lỗi | `button "Load data" is gone` |
-| Nút đổi role hoặc tên | Lỗi | `button "Count 0" became button "Counter 0"` |
-| Thao tác dẫn tới màn khác | Lỗi | `now leads to /dialog.html, was /` |
-| Graph thêm/bớt màn hoặc edge mà chưa `--update` | Lỗi | `flowcheck/app.graph.json is out of date (3 nodes or edges changed)` |
-| Nút dịch chuyển hoặc đổi kích thước > 16 px | Cảnh báo | `button "Save" moved or resized: … → …` |
-| Nút mới | Info | `link "Export" is new` |
+| A control is gone | Error | `button "Load data" is gone` |
+| A control's role or name changed | Error | `button "Count 0" became button "Counter 0"` |
+| An action leads somewhere else | Error | `now leads to /dialog.html, was /` |
+| Screens or edges added or removed without `--update` | Error | `uiscout/app.graph.json is out of date (3 nodes or edges changed)` |
+| A control moved or resized by more than 16 px | Warning | `button "Save" moved or resized: … → …` |
+| A new control | Info | `link "Export" is new` |
 
-Phần **Graph diff** ở đầu báo cáo liệt kê màn và edge được thêm (`+`), bị bỏ (`-`) hoặc đổi đích (`~`).
+The **Graph diff** section at the top of the report lists screens and edges added (`+`), removed (`-`) or retargeted (`~`).
 
-## So hai graph bất kỳ
-
-```sh
-flowcheck diff old.graph.json new.graph.json   # thoát 1 nếu khác nhau
-```
-
-## Làm baseline ổn định
-
-Baseline chỉ có ích khi hai lần chạy cùng một commit cho cùng kết quả. Cần:
-
-1. **Cố định thời gian:** `"now": "2026-10-07T09:00:00+07:00"`. Không có thì ngày, "hôm nay", vạch giờ hiện tại làm snapshot đổi mỗi ngày.
-2. **Dữ liệu giống nhau mỗi lần:** seed cố định, database test, hoặc demo data của app.
-3. **Chặn thứ biến động:** API ngoài, quảng cáo, analytics (`block`).
-4. **Tạo baseline ở đúng mode CI dùng:** replay đi được nhiều edge hơn live.
-
-Kiểm tra độ ổn định trước khi commit:
+## Compare any two graphs
 
 ```sh
-flowcheck check --update
-flowcheck check          # phải ra "Graph diff (no change)"
-flowcheck check          # và lần nữa
+uiscout diff old.graph.json new.graph.json   # exits 1 when they differ
 ```
 
-Đã đo: app calendar ở depth 2 (31 màn, 352 edge) chạy lại hai lần không lệch.
+## Keeping a baseline stable
 
-Nếu vẫn lệch, xem phần [baseline không ổn định](13-xu-ly-su-co.md#baseline-không-ổn-định) trong trang xử lý sự cố.
+A baseline is only useful when two runs of the same commit agree. You need:
 
-Tiếp theo: [Network](06-network.md).
+1. **A fixed time:** `"now": "2026-10-07T09:00:00+07:00"`. Otherwise dates, "today" and a now-line change the snapshots every day.
+2. **The same data every run:** fixed seeds, a test database, or the app's demo data.
+3. **Nothing that varies blocked:** external APIs, ads, analytics (`block`).
+4. **The baseline taken in the mode CI uses:** replay walks more edges than live.
+
+Check stability before committing:
+
+```sh
+uiscout check --update
+uiscout check          # must say "Graph diff (no change)"
+uiscout check          # and again
+```
+
+Measured: a calendar app at depth 2 (31 screens, 352 edges) reran twice with no change.
+
+Still drifting? See [unstable baselines](14-troubleshooting.md#unstable-baselines).
+
+Next: [Network modes](06-network.md).

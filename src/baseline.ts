@@ -9,8 +9,8 @@ import type { Finding, Fingerprint, Graph, GraphEdge, RawElement, Step } from '.
  * Baselines (design doc §7C and §10): what the app looked like when someone last
  * accepted it, committed to the repo and reviewed like code.
  *
- *   flowcheck/app.graph.json        the graph, a lockfile: a run that differs fails
- *   flowcheck/snapshots/<node>.txt  one structural snapshot per node and context
+ *   uiscout/app.graph.json        the graph, a lockfile: a run that differs fails
+ *   uiscout/snapshots/<node>.txt  one structural snapshot per node and context
  *
  * A snapshot is text on purpose: its git diff is the review.
  */
@@ -185,7 +185,7 @@ export async function loadBaseline(dir: string): Promise<Baseline> {
   return { graph, snapshots, replays }
 }
 
-/** Accept the current run as the baseline (`flowcheck check --update`). */
+/** Accept the current run as the baseline (`uiscout check --update`). */
 export async function saveBaseline(dir: string, graph: Graph, snapshots: Snapshots, replays: Record<string, Step[]> = {}): Promise<void> {
   const snapDir = path.join(dir, 'snapshots')
   await rm(snapDir, { recursive: true, force: true })

@@ -1,5 +1,5 @@
 /*
- * Everything flowcheck writes may be committed (design doc §14: recordings must be
+ * Everything uiscout writes may be committed (design doc §14: recordings must be
  * kept free of personal data). Redaction runs before anything reaches disk:
  * response bodies in recordings, and the visible names in graphs and snapshots
  * (an account email in a sidebar would otherwise land in git).

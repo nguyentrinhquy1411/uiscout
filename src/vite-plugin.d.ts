@@ -1,14 +1,14 @@
 import type { SourceMap } from 'magic-string'
 
-export interface FlowcheckIdsOptions {
+export interface UiscoutIdsOptions {
   /** Files to stamp (default: .jsx/.tsx under a src/ directory). */
   include?: RegExp
-  /** Paths in data-fc-src are relative to this (default: the Vite root). */
+  /** Paths in data-scout-src are relative to this (default: the Vite root). */
   root?: string
 }
 
-/** Vite plugin: stamps interactive JSX with data-fc-src and data-fc-id. Use in test builds. */
-export function flowcheckIds(options?: FlowcheckIdsOptions): {
+/** Vite plugin: stamps interactive JSX with data-scout-src and data-scout-id. Use in test builds. */
+export function uiscoutIds(options?: UiscoutIdsOptions): {
   name: string
   enforce: 'pre'
   configResolved(config: { root: string }): void

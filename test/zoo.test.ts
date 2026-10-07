@@ -86,7 +86,7 @@ describe('reaching more of the app', () => {
 
   it('types into a field and presses Enter', () => {
     const edge = result.graph.edges.find((e) => e.from === '/form.html' && e.action.type === 'fill')
-    expect(edge).toMatchObject({ to: '/dialog.html', action: { text: 'flowcheck' } })
+    expect(edge).toMatchObject({ to: '/dialog.html', action: { text: 'uiscout' } })
   })
 
   it('flags controls with no accessible name', () => {
@@ -144,7 +144,7 @@ describe('safety and noise', () => {
 
   it('renders a report that leads with the errors', () => {
     const text = renderText(result)
-    expect(text.split('\n')[0]).toMatch(/^flowcheck: \d+ errors/)
+    expect(text.split('\n')[0]).toMatch(/^uiscout: \d+ errors/)
     expect(text).toContain('Not walked:')
   })
 })

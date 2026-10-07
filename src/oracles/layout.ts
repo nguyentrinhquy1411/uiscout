@@ -2,7 +2,7 @@
  * Oracle A, layout geometry and dead controls (design doc §7A), judged on the
  * live DOM with no screenshot and no model (the ReDeCheck failure types).
  * Runs inside the page right after collectElements(), which stamped each
- * control with data-fc-i and its visible box (clipped by scrolling ancestors).
+ * control with data-scout-i and its visible box (clipped by scrolling ancestors).
  */
 
 export interface LayoutIssue {
@@ -15,10 +15,10 @@ export interface LayoutIssue {
 /** `allowOverlap`: a selector for controls that overlap by design (stacked calendar events). */
 export function checkLayout(allowOverlap: string): LayoutIssue[] {
   const issues: LayoutIssue[] = []
-  const els = [...document.querySelectorAll<HTMLElement>('[data-fc-i]')]
+  const els = [...document.querySelectorAll<HTMLElement>('[data-scout-i]')]
   const label = (el: Element) => (el.getAttribute('aria-label') || (el as HTMLElement).innerText || el.tagName).replace(/\s+/g, ' ').trim().slice(0, 40)
   const boxOf = (el: HTMLElement) => {
-    const [x, y, w, h] = (el.dataset.fcBox ?? '0,0,0,0').split(',').map(Number)
+    const [x, y, w, h] = (el.dataset.scoutBox ?? '0,0,0,0').split(',').map(Number)
     return { left: x, top: y, right: x + w, bottom: y + h, w, h }
   }
   const IGNORE_HIT = '[role=dialog],[role=menu],[role=listbox],[role=tooltip],[data-base-ui-portal],dialog'
@@ -40,7 +40,7 @@ export function checkLayout(allowOverlap: string): LayoutIssue[] {
     })
     if (reachable || !blocker) continue
     const hit = blocker as Element
-    issues.push({ kind: 'covered', a: Number(el.dataset.fcI), b: -1, detail: `"${label(el)}" is covered by <${hit.tagName.toLowerCase()}> "${label(hit)}"` })
+    issues.push({ kind: 'covered', a: Number(el.dataset.scoutI), b: -1, detail: `"${label(el)}" is covered by <${hit.tagName.toLowerCase()}> "${label(hit)}"` })
   }
 
   // Overlap: two controls that aren't nested share a real part of their visible area.
@@ -54,7 +54,7 @@ export function checkLayout(allowOverlap: string): LayoutIssue[] {
       const h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top)
       if (w <= 2 || h <= 2) continue
       if ((w * h) / Math.min(a.w * a.h, b.w * b.h) < 0.25) continue
-      issues.push({ kind: 'overlap', a: Number(els[i].dataset.fcI), b: Number(els[j].dataset.fcI), detail: `"${label(els[i])}" overlaps "${label(els[j])}"` })
+      issues.push({ kind: 'overlap', a: Number(els[i].dataset.scoutI), b: Number(els[j].dataset.scoutI), detail: `"${label(els[i])}" overlaps "${label(els[j])}"` })
     }
   }
 
@@ -68,7 +68,7 @@ export function checkLayout(allowOverlap: string): LayoutIssue[] {
       // A child with its own ellipsis, or a scroll container, is intentional.
       if (/auto|scroll/.test(style.overflowX + style.overflowY)) continue
       if ([...el.querySelectorAll('*')].some((c) => getComputedStyle(c).textOverflow === 'ellipsis')) continue
-      issues.push({ kind: 'clipped', a: Number(el.dataset.fcI), b: -1, detail: `"${label(el)}" text is clipped (${el.scrollWidth}×${el.scrollHeight} in ${el.clientWidth}×${el.clientHeight})` })
+      issues.push({ kind: 'clipped', a: Number(el.dataset.scoutI), b: -1, detail: `"${label(el)}" text is clipped (${el.scrollWidth}×${el.scrollHeight} in ${el.clientWidth}×${el.clientHeight})` })
     }
   }
   return issues

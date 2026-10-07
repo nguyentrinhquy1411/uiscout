@@ -20,7 +20,7 @@ export async function checkA11y(page: Page, at: string): Promise<Finding[]> {
   for (const v of result.violations) {
     if (v.impact !== 'serious' && v.impact !== 'critical') continue
     for (const node of v.nodes.slice(0, 5)) {
-      const target = node.target.join(' ').replace(/\[data-fc-(i|box)="[^"]*"\]/g, '')
+      const target = node.target.join(' ').replace(/\[data-scout-(i|box)="[^"]*"\]/g, '')
       findings.push({ oracle: 'a11y', severity: 'warning', at, message: `${v.id}: ${v.help} — ${target}` })
     }
   }

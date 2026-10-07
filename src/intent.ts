@@ -25,7 +25,7 @@ export interface IntentLine {
 
 export type IntentState = 'linked' | 'failing' | 'pending' | 'stale' | 'unchecked'
 
-const SKIP = new Set(['node_modules', '.git', 'dist', 'build', '.flowcheck', 'coverage'])
+const SKIP = new Set(['node_modules', '.git', 'dist', 'build', '.uiscout', 'coverage'])
 
 /** Files under `root` whose names match, skipping dependencies and build output. */
 export async function findFiles(root: string, pattern: RegExp): Promise<string[]> {

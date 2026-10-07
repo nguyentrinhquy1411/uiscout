@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import type { Page } from 'playwright'
 
 /*
- * flowcheck.config.json (design doc §12) and contexts (§5): the personas a graph is
+ * uiscout.config.json (design doc §12) and contexts (§5): the personas a graph is
  * walked under. A context is a name plus the steps that put the app in that state,
  * run after every page load, so it works for apps that keep their session only in
  * memory as well as in cookies or localStorage.
@@ -47,7 +47,7 @@ export interface FileConfig {
   a11y?: boolean
   /** live (default), record or replay; recordings live in the baseline directory. */
   network?: 'live' | 'record' | 'replay'
-  /** Where the accepted graph and snapshots live (default "flowcheck"). */
+  /** Where the accepted graph and snapshots live (default "uiscout"). */
   baseline?: string
 }
 

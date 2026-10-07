@@ -13,7 +13,7 @@
   </main>
   <script>
     let n = 0
-    window.__flowcheck = { read: () => ({ 'cart.count': n }) }
+    window.__uiscout = { read: () => ({ 'cart.count': n }) }
     const $ = (id) => document.getElementById(id)
     $('add').onclick = () => { n++; $('count').textContent = n + ' items' }
     $('order').onclick = () => {

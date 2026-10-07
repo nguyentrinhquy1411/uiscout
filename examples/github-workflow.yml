@@ -1,7 +1,7 @@
-# Copy to .github/workflows/flowcheck.yml in the app's repo.
+# Copy to .github/workflows/uiscout.yml in the app's repo.
 # Walks the built app on every pull request, compares it with the committed
-# baseline (flowcheck/), and keeps one comment on the PR up to date.
-name: flowcheck
+# baseline (uiscout/), and keeps one comment on the PR up to date.
+name: uiscout
 on: pull_request
 
 permissions:
@@ -25,20 +25,20 @@ jobs:
           pnpm preview --port 4173 --strictPort &
           for i in $(seq 1 30); do curl -sf http://localhost:4173/ >/dev/null && break; sleep 1; done
 
-      - name: flowcheck
-        run: pnpm exec flowcheck check --url http://localhost:4173/
+      - name: uiscout
+        run: pnpm exec uiscout check --url http://localhost:4173/
 
       - name: Comment on the pull request
-        if: always() && hashFiles('.flowcheck/report.md') != ''
+        if: always() && hashFiles('.uiscout/report.md') != ''
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh pr comment ${{ github.event.pull_request.number }} --edit-last --create-if-none --body-file .flowcheck/report.md
+        run: gh pr comment ${{ github.event.pull_request.number }} --edit-last --create-if-none --body-file .uiscout/report.md
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: flowcheck
+          name: uiscout
           # Screenshots stay out (they show whatever the app shows); CI doesn't take them by default anyway.
           path: |
-            .flowcheck/
-            !.flowcheck/screens/
+            .uiscout/
+            !.uiscout/screens/

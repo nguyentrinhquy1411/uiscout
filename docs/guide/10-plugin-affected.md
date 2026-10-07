@@ -1,70 +1,68 @@
-# 10. Plugin Vite và chạy theo file thay đổi
+# 10. Vite plugin and affected-only runs
 
-Không cần sửa app, flowcheck nhận diện nút bằng fingerprint (role, tên, landmark, vị trí). Plugin Vite thêm hai thứ: ID ổn định hơn, và biết mỗi màn được dựng từ file nào. Thứ hai cho phép PR chỉ chạy những màn bị ảnh hưởng.
+Without touching the app, uiscout knows controls by fingerprint (role, name, landmarks, position). The Vite plugin adds two things: steadier IDs, and knowing which files each screen is built from. The second lets a pull request walk only the screens it affects.
 
-## Cài plugin
+## Install the plugin
 
 ```ts
 // vite.config.ts
-import { flowcheckIds } from 'flowcheck/vite'
+import { uiscoutIds } from 'uiscout/vite'
 
 export default defineConfig(({ mode }) => ({
-  plugins: [mode === 'test' && flowcheckIds(), react()],
+  plugins: [mode === 'test' && uiscoutIds(), react()],
 }))
 ```
 
-Chạy app ở mode test để plugin có tác dụng, ví dụ `vite --mode test` hoặc `vite build --mode test && vite preview`.
+Run the app in test mode for the plugin to apply: `vite --mode test`, or `vite build --mode test && vite preview`.
 
-Tuỳ chọn:
-
-| Tuỳ chọn | Mặc định | Ý nghĩa |
+| Option | Default | Meaning |
 | --- | --- | --- |
-| `include` | file `.jsx`/`.tsx` trong `src/` | Regex chọn file được gắn |
-| `root` | gốc Vite | Đường dẫn trong `data-fc-src` tính từ đây |
+| `include` | `.jsx`/`.tsx` files under `src/` | Regex of files to stamp |
+| `root` | the Vite root | `data-scout-src` paths are relative to this |
 
-## Plugin gắn gì
+## What it adds
 
-Vào mọi phần tử tương tác trong JSX (button, a, input, select, textarea, phần tử có `onClick`/`onKeyDown`/`role`/`tabIndex`, component tên kiểu `…Button`, `Link`, `…Trigger`, `…Item`…):
+Every interactive JSX element (button, a, input, select, textarea; elements with `onClick`, `onKeyDown`, `role` or `tabIndex`; components named like `…Button`, `Link`, `…Trigger`, `…Item`…) gets:
 
 ```html
-<button data-fc-src="src/features/cart/CartSummary.tsx:48"
-        data-fc-id="cart.CartSummary.submitOrder">Place order</button>
+<button data-scout-src="src/features/cart/CartSummary.tsx:48"
+        data-scout-id="cart.CartSummary.submitOrder">Place order</button>
 ```
 
-| Thuộc tính | Cách tạo | Dùng để |
+| Attribute | Made from | Used for |
 | --- | --- | --- |
-| `data-fc-src` | Đường dẫn file và dòng | Biết màn nào dựng từ file nào |
-| `data-fc-id` | `<module>.<Component>.<gợi ý>` | ID ổn định; đổi chữ trên nút không đổi ID |
+| `data-scout-src` | File path and line | Knowing which files build each screen |
+| `data-scout-id` | `<module>.<Component>.<hint>` | A steady ID: relabelling the button keeps it |
 
-Gợi ý lấy theo thứ tự: tên handler (`onClick={submitOrder}` → `submitOrder`; `() => navigate('/checkout')` → `navigateCheckout`), `aria-label`, rồi chữ trên nút. Setter kiểu `setZoom` nhường cho nhãn. Không bao giờ dựa vào vị trí. Phần tử đã có `data-testid` giữ nguyên test ID đó.
+The hint comes from, in order: the handler (`onClick={submitOrder}` → `submitOrder`; `() => navigate('/checkout')` → `navigateCheckout`), the `aria-label`, then the button's text. A state setter like `setZoom` gives way to the label. Never from position. Elements with a `data-testid` keep it.
 
-## Chạy theo file thay đổi
+## Affected-only runs
 
-1. Tạo baseline với app **đã bật plugin**: `flowcheck check --update`. Mỗi màn trong `app.graph.json` có danh sách `sources`.
-2. Trên nhánh tính năng:
+1. Take the baseline with the plugin **on**: `uiscout check --update`. Every screen in `app.graph.json` then lists its `sources`.
+2. On a feature branch:
 
 ```sh
-flowcheck check --affected origin/main
+uiscout check --affected origin/main
 ```
 
-Tool lấy các file đổi so với `origin/main` (kể cả chưa commit), chọn các màn dựng từ những file đó **cộng các màn đứng ngay trước** chúng, phát lại đường đi tới từng màn, và chỉ so phần đó của baseline.
+uiscout takes the files changed since `origin/main` (uncommitted ones included), selects the screens built from them **plus the screens one step before them**, replays the path to each, and judges only that part of the baseline.
 
 ```text
   affected: 5 of 10 screens, from 1 changed file
 ```
 
-Tool **chạy toàn bộ** và nói lý do khi không chắc:
+It **runs everything**, and says why, when it can't be sure:
 
-| Thông điệp | Nguyên nhân |
+| Message | Cause |
 | --- | --- |
-| `full run: src/store.ts not tied to any screen` | File đổi là code dùng chung (store, hook, CSS chung, config): có thể ảnh hưởng mọi màn |
-| `full run: the baseline has no source witnesses` | Baseline tạo khi chưa có plugin |
-| `full run: no recorded path to /x` | Thiếu đường đi trong `paths.json` |
-| `full run: no baseline to select from` | Chưa có baseline |
-| `nothing to walk` | Không file mã nguồn nào đổi (chỉ docs): thoát 0 |
+| `full run: src/store.ts not tied to any screen` | Shared code changed (a store, a hook, shared CSS, a config): it may affect any screen |
+| `full run: the baseline has no source witnesses` | The baseline was taken without the plugin |
+| `full run: no recorded path to /x` | `paths.json` lacks a path |
+| `full run: no baseline to select from` | There's no baseline yet |
+| `nothing to walk` | No source file changed (docs only): exits 0 |
 
-Đo trên app mẫu: sửa một file thì chạy 5/10 màn, 25 giây thay vì 42, bắt đủ lỗi.
+Measured on a sample app: a one-file change walked 5 of 10 screens in 25 s instead of 42 s, and found the same errors.
 
-Đường dẫn file được tính từ thư mục hiện tại, nên chạy từ gốc app (kể cả khi app nằm trong monorepo).
+Paths are relative to the current directory, so run from the app's root (in a monorepo too).
 
-Tiếp theo: [Chạy trong CI](11-ci.md).
+Next: [Running in CI](11-ci.md).

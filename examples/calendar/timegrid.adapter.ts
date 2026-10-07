@@ -3,7 +3,7 @@ import type { AdapterStep, WidgetAdapter } from '../../src/adapter.ts'
 
 /*
  * The calendar app's week time grid as a widget (design doc §8): drag to move,
- * drag an edge to resize, zoom. The app publishes window.__flowcheck.calendar
+ * drag an edge to resize, zoom. The app publishes window.__uiscout.calendar
  * (only when the runner is present); boxes are measured in the DOM, so the
  * geometry invariant compares what's stored with what's drawn.
  */
@@ -43,10 +43,10 @@ type Actions = {
 
 const read = async (page: Page): Promise<State> => {
   const hook = await page.evaluate(() => {
-    const cal = (window as unknown as { __flowcheck?: { calendar?: { getState(): { hourHeight: number; events: CalEvent[] } } } }).__flowcheck?.calendar
+    const cal = (window as unknown as { __uiscout?: { calendar?: { getState(): { hourHeight: number; events: CalEvent[] } } } }).__uiscout?.calendar
     return cal ? cal.getState() : null
   })
-  if (!hook) throw new Error('window.__flowcheck.calendar is missing: is the app built with the hook?')
+  if (!hook) throw new Error('window.__uiscout.calendar is missing: is the app built with the hook?')
   const boxes = await page.evaluate(() => {
     const scroller = document.querySelector('.calendar-scroller')!.getBoundingClientRect()
     const out: Record<string, { day: string; top: number; height: number; onScreen: boolean; grab: boolean; edge: boolean }> = {}
@@ -112,7 +112,7 @@ const adapter: WidgetAdapter<State, Actions> = {
   harness: '/calendar?view=week',
   async setup(page) {
     await page.waitForFunction(() => {
-      const cal = (window as unknown as { __flowcheck?: { calendar?: { getState(): { ready: boolean } } } }).__flowcheck?.calendar
+      const cal = (window as unknown as { __uiscout?: { calendar?: { getState(): { ready: boolean } } } }).__uiscout?.calendar
       return Boolean(cal?.getState().ready)
     }, null, { timeout: 15_000 })
   },

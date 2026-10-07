@@ -48,7 +48,7 @@ export function renderText(result: CrawlResult, diff?: { diff: GraphDiff; agains
   const { nodes, edges } = result.graph
   const lines: string[] = []
 
-  lines.push(`flowcheck: ${distinct(errors)} errors, ${distinct(warnings)} warnings · ${nodes.length} nodes, ${edges.length} edges, ${result.steps} steps`)
+  lines.push(`uiscout: ${distinct(errors)} errors, ${distinct(warnings)} warnings · ${nodes.length} nodes, ${edges.length} edges, ${result.steps} steps`)
   lines.push('')
   if (diff) lines.push(...renderDiff(diff.diff, diff.against))
   section(lines, 'Errors', errors)
@@ -105,7 +105,7 @@ function section(lines: string[], title: string, findings: Finding[]): void {
 const distinct = (findings: Finding[]) => new Set(findings.map((f) => `${f.oracle}|${f.message}`)).size
 
 /** Marks the comment so CI can find and update it instead of posting a new one each push. */
-export const COMMENT_MARKER = '<!-- flowcheck-report -->'
+export const COMMENT_MARKER = '<!-- uiscout-report -->'
 const MAX_MD_ITEMS = 10
 
 /**
@@ -120,7 +120,7 @@ export function renderMarkdown(result: CrawlResult, diff?: { diff: GraphDiff; ag
   const verdict = e ? `❌ ${e} error${e === 1 ? '' : 's'}` : '✅ no errors'
   const md: string[] = [
     COMMENT_MARKER,
-    `### flowcheck: ${verdict}${w ? `, ${w} warning${w === 1 ? '' : 's'}` : ''}`,
+    `### uiscout: ${verdict}${w ? `, ${w} warning${w === 1 ? '' : 's'}` : ''}`,
     '',
     `${result.graph.nodes.length} screens, ${result.graph.edges.length} edges, ${result.steps} steps walked.${result.flaky.length ? ` ${result.flaky.length} flaky (not blocking).` : ''}`,
     '',

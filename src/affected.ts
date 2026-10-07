@@ -24,7 +24,7 @@ export function selectAffected(graph: Graph, replays: Record<string, Step[]>, ch
   const full = (reason: string): Selection => ({ only: null, scope: new Set(), reason: `full run: ${reason}` })
   const code = changedFiles.filter((f) => CODE.test(f))
   if (!code.length) return { only: {}, scope: new Set(), reason: 'no source files changed: nothing to walk' }
-  if (!graph.nodes.some((n) => n.sources?.length)) return full('the baseline has no source witnesses (build the app with the flowcheck identity plugin, then --update)')
+  if (!graph.nodes.some((n) => n.sources?.length)) return full('the baseline has no source witnesses (build the app with the uiscout identity plugin, then --update)')
 
   const hit = new Set(graph.nodes.filter((n) => n.sources?.some((s) => code.includes(s))).map((n) => n.id))
   const unmapped = code.filter((f) => !graph.nodes.some((n) => n.sources?.includes(f)))

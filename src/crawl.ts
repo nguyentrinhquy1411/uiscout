@@ -140,7 +140,7 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
   const settleMs = options.settleMs ?? 250
   const quiesceTimeoutMs = options.quiesceTimeoutMs ?? 4000
   const fastForwardMs = options.fastForwardMs ?? 5000
-  const fillText = options.fillText ?? 'flowcheck'
+  const fillText = options.fillText ?? 'uiscout'
   const contexts = options.contexts?.length ? options.contexts : [DEFAULT_CONTEXT]
   const network = options.network ?? 'live'
   const recordings = options.recordings ?? {}
@@ -251,7 +251,7 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
     // (or a tampered paths.json) must never land on a destructive control.
     if (network !== 'replay' && safetyOf(fingerprintOf(found.el)) === 'destructive') return `refused: matched destructive "${found.el.name}"`
     if (step.kind === 'fill') {
-      const field = page.locator(`[data-fc-i="${found.el.i}"]`)
+      const field = page.locator(`[data-scout-i="${found.el.i}"]`)
       return field
         .fill(step.text, { timeout: 3000 })
         .then(() => (step.enter ? field.press('Enter') : undefined))
@@ -552,7 +552,7 @@ export function skipReason(el: RawElement, safety: string, origin: string): Skip
 /** Clicks control `i` where a click lands on it; returns why it failed, or null. */
 export async function clickAt(page: Page, i: number): Promise<string | null> {
   const position = (await page.evaluate(hitPoint, i)) ?? undefined
-  return page.locator(`[data-fc-i="${i}"]`).click({ timeout: 3000, position }).then(() => null, (err: Error) => clickFailure(err.message))
+  return page.locator(`[data-scout-i="${i}"]`).click({ timeout: 3000, position }).then(() => null, (err: Error) => clickFailure(err.message))
 }
 
 const globalKey = (fp: Fingerprint) => `${fp.role}|${fp.name}|${fp.parents}|${fp.testId ?? ''}`

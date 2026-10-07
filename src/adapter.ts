@@ -13,7 +13,7 @@ import { installMutationCounter, mutationCount } from './page-scripts.ts'
  * sequences, and a failing sequence is shrunk to the shortest that still fails.
  *
  *   // planning/gantt.adapter.ts
- *   import type { WidgetAdapter } from 'flowcheck/adapter'
+ *   import type { WidgetAdapter } from 'uiscout/adapter'
  *   export default { id: 'planning.Gantt', harness: '/planning', read, actions, generate, invariants } satisfies WidgetAdapter<…>
  */
 
@@ -83,8 +83,8 @@ export async function runAdapter<S>(adapter: WidgetAdapter<S>, options: AdapterR
     await context.addInitScript(installMutationCounter)
     // Apps publish debug hooks only when the runner is there to read them.
     await context.addInitScript(() => {
-      const w = window as unknown as { __flowcheck?: Record<string, unknown> }
-      w.__flowcheck ??= {}
+      const w = window as unknown as { __uiscout?: Record<string, unknown> }
+      w.__uiscout ??= {}
     })
     const page = await context.newPage()
     if (options.now) await page.clock.setFixedTime(options.now)
@@ -168,7 +168,7 @@ export async function loadAdapters(root: string): Promise<WidgetAdapter<unknown>
   const found: WidgetAdapter<unknown>[] = []
   const walk = async (dir: string) => {
     for (const entry of await readdir(dir, { withFileTypes: true })) {
-      if (['node_modules', '.git', 'dist', '.flowcheck'].includes(entry.name)) continue
+      if (['node_modules', '.git', 'dist', '.uiscout'].includes(entry.name)) continue
       const full = path.join(dir, entry.name)
       if (entry.isDirectory()) await walk(full)
       else if (/\.adapter\.(m?js|ts)$/.test(entry.name)) {

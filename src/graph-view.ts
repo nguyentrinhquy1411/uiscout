@@ -5,20 +5,20 @@ import type { SnapshotEntry } from './baseline.ts'
 import type { Finding, Graph } from './types.ts'
 
 /*
- * The graph as a page you can open (flowcheck graph --open): screens in columns by
+ * The graph as a page you can open (uiscout graph --open): screens in columns by
  * distance from the entry, findings on the screens they were seen on, and an
  * inspector for each screen's path, actions, API calls and ways in. One
  * self-contained HTML file; the data is embedded, nothing is fetched.
  */
 
 const TEMPLATE = path.join(import.meta.dirname, 'graph-view.html')
-const MARKER = '/*__FLOWCHECK_DATA__*/null'
+const MARKER = '/*__UISCOUT_DATA__*/null'
 
 export interface GraphViewData {
   graph: Graph
   /** Findings of the run that produced the graph, or null for a baseline on its own. */
   findings: Finding[] | null
-  /** Shown in the header, e.g. "baseline flowcheck/app.graph.json". */
+  /** Shown in the header, e.g. "baseline uiscout/app.graph.json". */
   label: string
   source: string
   /** Structural snapshot per screen, keyed "[context] node" or "node". */

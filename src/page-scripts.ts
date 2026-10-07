@@ -6,7 +6,7 @@ import type { RawElement } from './types.ts'
  * defined elsewhere in this module.
  */
 
-/** Interactive elements in the viewport, stamped with data-fc-i so a step can click them. */
+/** Interactive elements in the viewport, stamped with data-scout-i so a step can click them. */
 export function collectElements(): RawElement[] {
   const SELECTOR = [
     'a[href]', 'button', 'input:not([type=hidden])', 'select', 'textarea', 'summary',
@@ -101,9 +101,9 @@ export function collectElements(): RawElement[] {
   const overlays = [...document.querySelectorAll(OVERLAY)].filter((o) => visibleRect(o) && !o.parentElement?.closest(OVERLAY))
   const scope: ParentNode = overlays.at(-1) ?? document
 
-  document.querySelectorAll('[data-fc-i]').forEach((el) => {
-    el.removeAttribute('data-fc-i')
-    el.removeAttribute('data-fc-box')
+  document.querySelectorAll('[data-scout-i]').forEach((el) => {
+    el.removeAttribute('data-scout-i')
+    el.removeAttribute('data-scout-box')
   })
   const out: RawElement[] = []
   for (const el of scope.querySelectorAll(SELECTOR)) {
@@ -114,16 +114,16 @@ export function collectElements(): RawElement[] {
     // A control nested in another (an icon button inside a link) is one target, not two.
     if (el.parentElement?.closest(SELECTOR) && !el.matches('input,select,textarea')) continue
     const i = out.length
-    el.setAttribute('data-fc-i', String(i))
+    el.setAttribute('data-scout-i', String(i))
     // The visible part, for the layout checks that run next in the same state.
-    el.setAttribute('data-fc-box', `${r.x},${r.y},${r.w},${r.h}`)
+    el.setAttribute('data-scout-box', `${r.x},${r.y},${r.w},${r.h}`)
     out.push({
       i,
       tag: el.tagName.toLowerCase(),
       role: implicitRole(el),
       name: nameOf(el),
-      testId: el.getAttribute('data-testid') ?? el.getAttribute('data-fc-id'),
-      source: el.getAttribute('data-fc-src') ?? el.closest('[data-fc-src]')?.getAttribute('data-fc-src') ?? null,
+      testId: el.getAttribute('data-testid') ?? el.getAttribute('data-scout-id'),
+      source: el.getAttribute('data-scout-src') ?? el.closest('[data-scout-src]')?.getAttribute('data-scout-src') ?? null,
       parents: parentsOf(el),
       href: el.getAttribute('href'),
       target: el.getAttribute('target'),
@@ -190,7 +190,7 @@ export function mutationCount(): number {
  * (cascaded calendar events) while the rest of the control is reachable.
  */
 export function hitPoint(i: number): { x: number; y: number } | null {
-  const el = document.querySelector(`[data-fc-i="${i}"]`)
+  const el = document.querySelector(`[data-scout-i="${i}"]`)
   if (!el) return null
   const r = el.getBoundingClientRect()
   for (const [fx, fy] of [[0.5, 0.5], [0.15, 0.5], [0.5, 0.15], [0.85, 0.5], [0.5, 0.85], [0.15, 0.15]]) {
@@ -208,21 +208,21 @@ export function hitPoint(i: number): { x: number; y: number } | null {
  * even when it isn't interactive.
  */
 export function observePage(): { url: string; time: number; reads: Record<string, unknown>; marked: Array<{ id: string; name: string; disabled: boolean }> } {
-  const hook = (window as unknown as { __flowcheck?: { read?: () => Record<string, unknown> } }).__flowcheck
+  const hook = (window as unknown as { __uiscout?: { read?: () => Record<string, unknown> } }).__uiscout
   let reads: Record<string, unknown> = {}
   try {
     reads = hook?.read?.() ?? {}
   } catch {
     // A broken hook reads as nothing; the rule that needs it will say so.
   }
-  const marked = [...document.querySelectorAll<HTMLElement>('[data-testid],[data-fc-id]')]
+  const marked = [...document.querySelectorAll<HTMLElement>('[data-testid],[data-scout-id]')]
     .filter((el) => {
       const r = el.getBoundingClientRect()
       const style = getComputedStyle(el)
       return r.width > 0 && r.height > 0 && style.visibility !== 'hidden' && style.display !== 'none' && !el.closest('[hidden],[aria-hidden=true]')
     })
     .map((el) => ({
-      id: (el.getAttribute('data-testid') ?? el.getAttribute('data-fc-id'))!,
+      id: (el.getAttribute('data-testid') ?? el.getAttribute('data-scout-id'))!,
       name: (el.getAttribute('aria-label') || el.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 80),
       disabled: (el as HTMLButtonElement).disabled === true || el.getAttribute('aria-disabled') === 'true',
     }))

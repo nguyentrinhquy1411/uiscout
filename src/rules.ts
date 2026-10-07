@@ -2,7 +2,7 @@
  * Invariants (design doc §7B): rules that must hold on every path, with two
  * temporal operators, evaluated over the sequence of states the runner observes.
  *
- *   import { always, eventually, when, state } from 'flowcheck/rules'
+ *   import { always, eventually, when, state } from 'uiscout/rules'
  *
  *   export const emptyCartDisablesOrder = always(
  *     when(() => state.read('cart.count') === 0)
@@ -28,7 +28,7 @@ export interface ObservedState {
   /** The step that led here, readable. */
   step: string
   elements: Record<string, { role: string; name: string; disabled: boolean }>
-  /** Values the app exposes for tests through window.__flowcheck.read(). */
+  /** Values the app exposes for tests through window.__uiscout.read(). */
   reads: Record<string, unknown>
 }
 
@@ -42,10 +42,10 @@ export interface ElementView {
 
 /**
  * The state being judged lives on globalThis, not in this module: a rules file that
- * imports 'flowcheck/rules' may get a different copy of this module than the
+ * imports 'uiscout/rules' may get a different copy of this module than the
  * runner (the built package vs. the source), and both must see the same state.
  */
-const slot = globalThis as unknown as { __flowcheckState?: ObservedState | null }
+const slot = globalThis as unknown as { __uiscoutState?: ObservedState | null }
 
 /** The state a rule's predicates read; bound by the evaluator while a predicate runs. */
 export const state = {
@@ -70,17 +70,17 @@ export const state = {
 }
 
 function now(): ObservedState {
-  if (!slot.__flowcheckState) throw new Error('state is only readable inside a rule predicate')
-  return slot.__flowcheckState
+  if (!slot.__uiscoutState) throw new Error('state is only readable inside a rule predicate')
+  return slot.__uiscoutState
 }
 
 export function withState<T>(s: ObservedState, fn: () => T): T {
-  const previous = slot.__flowcheckState ?? null
-  slot.__flowcheckState = s
+  const previous = slot.__uiscoutState ?? null
+  slot.__uiscoutState = s
   try {
     return fn()
   } finally {
-    slot.__flowcheckState = previous
+    slot.__uiscoutState = previous
   }
 }
 

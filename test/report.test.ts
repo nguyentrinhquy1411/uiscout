@@ -15,17 +15,17 @@ describe('pull request comment', () => {
       { oracle: 'a11y', severity: 'warning', at: 'load /', message: 'button-name' },
     ]))
     expect(md.startsWith(COMMENT_MARKER)).toBe(true)
-    expect(md).toContain('### flowcheck: ❌ 1 error, 1 warning')
+    expect(md).toContain('### uiscout: ❌ 1 error, 1 warning')
     expect(md).toContain('- **script** — Uncaught Error: \\<boom\\>  \n  <sub>at `/ → click a` and 1 more</sub>')
     expect(md).toContain('<details><summary>Full report</summary>')
   })
 
   it('shows graph changes as a diff block', () => {
     const md = renderMarkdown(result([]), {
-      against: 'flowcheck/app.graph.json',
+      against: 'uiscout/app.graph.json',
       diff: { addedNodes: ['/new'], removedNodes: [], addedEdges: [], removedEdges: [], retargeted: [] },
     })
-    expect(md).toContain('### flowcheck: ✅ no errors')
+    expect(md).toContain('### uiscout: ✅ no errors')
     expect(md).toContain('```diff\n+ node   /new\n```')
   })
 })

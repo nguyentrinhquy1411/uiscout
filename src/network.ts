@@ -16,7 +16,7 @@ import { isSensitiveKey, redactBody, redactText } from './redact.ts'
  * whose server also executes same-origin GET navigations (server-rendered "GET
  * /logout") still receives those.
  *
- *   flowcheck/recordings.json   { "GET /api/items?page=1": [ { status, contentType, body, requestHash? } ] }
+ *   uiscout/recordings.json   { "GET /api/items?page=1": [ { status, contentType, body, requestHash? } ] }
  *
  * Recorded bodies are redacted (emails, tokens, sensitive JSON keys) before they
  * are kept: the file is meant to be committed.
@@ -36,7 +36,7 @@ export interface Recorded {
 export type Recordings = Record<string, Recorded[]>
 
 /** Header the replay sets on a request it has no recording for; the monitor reports it. */
-export const NO_RECORDING = 'x-flowcheck-no-recording'
+export const NO_RECORDING = 'x-uiscout-no-recording'
 
 const API_TYPES = new Set(['fetch', 'xhr', 'eventsource', 'ping'])
 const STATIC_TYPES = new Set(['script', 'stylesheet', 'image', 'font', 'media', 'manifest', 'texttrack'])
@@ -113,7 +113,7 @@ export async function installNetworkMode(context: BrowserContext, mode: NetworkM
     }
     if (type === 'document' && !sameOrigin) {
       // Leaving the app: stand in for the other site so the edge is still recorded.
-      return route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>external (flowcheck replay)</title>' })
+      return route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>external (uiscout replay)</title>' })
     }
     if (sameOrigin || (req.method() === 'GET' && STATIC_TYPES.has(type))) return route.fallback()
     return route.abort('blockedbyclient')
@@ -121,6 +121,6 @@ export async function installNetworkMode(context: BrowserContext, mode: NetworkM
   // Same-origin sockets are the dev server (hot reload); anything else could be a backend.
   await context.routeWebSocket(
     (url) => !url.href.replace(/^ws/, 'http').startsWith(origin),
-    (ws) => ws.close({ code: 1008, reason: 'flowcheck replay: no backend' }),
+    (ws) => ws.close({ code: 1008, reason: 'uiscout replay: no backend' }),
   )
 }

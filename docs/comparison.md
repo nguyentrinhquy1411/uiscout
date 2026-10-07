@@ -1,10 +1,10 @@
-# flowcheck vs uigraph vs wirenav — M0 spike
+# uiscout vs uigraph vs wirenav — M0 spike
 
 Oct 6, 2026. Both tools cloned and run on the same apps; numbers below are from those runs, not from their READMEs.
 
 ## What each tool is
 
-| | flowcheck (M1) | [uigraph](https://github.com/kanetran29/uigraph) 0.1.3 | [wirenav](https://github.com/rahXephonz/wirenav) |
+| | uiscout (M1) | [uigraph](https://github.com/kanetran29/uigraph) 0.1.3 | [wirenav](https://github.com/rahXephonz/wirenav) |
 | --- | --- | --- | --- |
 | Platform | Any web app (runtime) | React (react-router v5/v6/data), Vue, Angular, Next | React Native (Expo Router, React Navigation) |
 | How the graph is built | Walk the running app in Playwright | Static analysis (ts-morph), then runtime `verify` of candidate edges | Static analysis only |
@@ -17,7 +17,7 @@ Oct 6, 2026. Both tools cloned and run on the same apps; numbers below are from 
 
 ## Run 1: the calendar app (TanStack Router, IndexedDB, no backend)
 
-| | flowcheck | uigraph | wirenav |
+| | uiscout | uigraph | wirenav |
 | --- | --- | --- | --- |
 | Graph | 42 nodes, 384 edges (depth 2, 2 min) | **0 nodes, 0 edges** — TanStack Router has no adapter | Not applicable (web app) |
 | Bugs found | 2 real, both fixed upstream: a Base UI menu label outside its group (threw on every open), chat failing silently offline | — | — |
@@ -26,7 +26,7 @@ A static tool is only as good as its router adapter; a runtime walker needs none
 
 ## Run 2: uigraph's own gauntlet sample (react-router data router, 25 patterns, 35 golden cases)
 
-uigraph's `map` scores **35/35** (its own gate: a node, a `must`/`may` edge, or an honest degrade such as an unknown sink). flowcheck, run with no configuration (`--depth 3`, 19 clicks, **7 s**), observed:
+uigraph's `map` scores **35/35** (its own gate: a node, a `must`/`may` edge, or an honest degrade such as an unknown sink). uiscout, run with no configuration (`--depth 3`, 19 clicks, **7 s**), observed:
 
 | Result | Cases | Why |
 | --- | --- | --- |
@@ -38,7 +38,7 @@ It also reported one network error: `POST /api/checkout returned 404` on "Buy no
 
 ### After M1.5 (contexts, seeds, typing, timers)
 
-With a five-line `flowcheck.config.json` (a guest and a member context, seeds `/legacy`, `/no-such-page`, `/account`), the same run scores **32 of 35**, plus 1 partial, in 37 s:
+With a five-line `uiscout.config.json` (a guest and a member context, seeds `/legacy`, `/no-such-page`, `/account`), the same run scores **32 of 35**, plus 1 partial, in 37 s:
 
 | Was missed | Now |
 | --- | --- |
@@ -56,14 +56,14 @@ With M2's replay mode (`--mode record` once, then `--mode replay`) g15 (`/accoun
 ## What this decides (M0)
 
 1. **The two approaches miss opposite things.** Static extraction misses nothing it can parse and everything behind an unsupported router; runtime walking misses unlinked routes, other auth states, timers and destructive paths, and nothing else. The design doc's trust tiers (static + observed) are right: neither alone is enough.
-2. **Don't rebuild static extraction.** uigraph already does it well for four routers and is MIT. Keep flowcheck's own JSON schema (runtime fingerprints, oracle results and API attribution have no place in uigraph's IR) and add **import of uigraph's graph** as the static tier: its nodes become seed URLs for the walker (fixes g01g, g01h, g06), its `may` edges become a worklist.
-3. **What flowcheck must add to close the runtime gaps**, in order of cases fixed:
+2. **Don't rebuild static extraction.** uigraph already does it well for four routers and is MIT. Keep uiscout's own JSON schema (runtime fingerprints, oracle results and API attribution have no place in uigraph's IR) and add **import of uigraph's graph** as the static tier: its nodes become seed URLs for the walker (fixes g01g, g01h, g06), its `may` edges become a worklist.
+3. **What uiscout must add to close the runtime gaps**, in order of cases fixed:
    - **Contexts** (§5): walk once per persona with a login script → g12b, g13, g25.
    - **Seed routes** from a static graph or the router's route table (TanStack Router's `routeTree.gen.ts` for apps like the calendar) → g01g, g01h, g06.
    - **Keyboard and text input** with a small fixture vocabulary → g20, and every form.
    - **Eventual transitions**: after a step, keep watching the URL for a bounded time (e.g. 5 s) without blocking the walk → g16.
    - **Replay mode** (§6) so destructive edges can be walked safely → g15, g17a.
-4. **Where flowcheck is unique**: none of the three tools judges a step. uigraph proves an edge *exists*; flowcheck proves the step *works* (no exception, no failed request, a clickable control, a sane layout). That is the product; the graph is how we get there.
+4. **Where uiscout is unique**: none of the three tools judges a step. uigraph proves an edge *exists*; uiscout proves the step *works* (no exception, no failed request, a clickable control, a sane layout). That is the product; the graph is how we get there.
 5. **wirenav** shows the CI shape to copy for M2: a line-oriented, byte-deterministic text file whose git diff reads as "edge removed", with declared vs inferred provenance reported separately. Its domain (React Native, static only) doesn't overlap ours.
 
 ## How to reproduce

@@ -22,8 +22,8 @@
         track.appendChild(el)
       }
     }
-    window.__flowcheck = window.__flowcheck || {}
-    window.__flowcheck.bars = { getState: () => tasks.map((t) => ({ ...t })) }
+    window.__uiscout = window.__uiscout || {}
+    window.__uiscout.bars = { getState: () => tasks.map((t) => ({ ...t })) }
     let drag = null
     track.addEventListener('pointerdown', (e) => {
       const id = e.target.dataset && e.target.dataset.id

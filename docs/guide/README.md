@@ -1,49 +1,49 @@
-# Hướng dẫn sử dụng flowcheck
+# uiscout user guide
 
-flowcheck tự đi khắp một web app đang chạy như một người dùng: bấm mọi nút an toàn, gõ vào mọi ô, đi qua mọi màn nó tới được. Sau **mỗi bước** nó phán đúng/sai bằng các bộ kiểm tra xác định (oracle). Kết quả là một bản đồ app (graph) và danh sách lỗi; chạy lại trên cùng commit ra đúng như cũ.
+uiscout walks a running web app the way a curious user would: it clicks every safe control, types into every field and follows every screen it can reach. After **every step** it judges the result with deterministic checks (oracles). You get a map of the app (the graph) and a list of defects, and the same commit gives the same result every time.
 
-Bộ hướng dẫn này đi theo thứ tự dùng thật: cài, chạy lần đầu, đọc kết quả, rồi tới các tính năng nâng cao.
+The guide follows the order you'll use it in: install, first run, reading the results, then the advanced features.
 
-| # | Trang | Đọc khi |
+| # | Page | Read it when |
 | --- | --- | --- |
-| 1 | [Cài đặt và chạy lần đầu](01-cai-dat.md) | Mới bắt đầu |
-| 2 | [Lệnh `check` và cách đọc báo cáo](02-check.md) | Sau lần chạy đầu tiên |
-| 3 | [File cấu hình `flowcheck.config.json`](03-cau-hinh.md) | Muốn lưu thiết lập, thêm persona, seed route |
-| 4 | [Trang graph và snapshot](04-graph.md) | Muốn *nhìn* app và lỗi |
-| 5 | [Baseline: so sánh giữa các lần chạy](05-baseline.md) | Muốn bắt hồi quy (nút biến mất, đổi đích) |
-| 6 | [Network: live, record, replay](06-network.md) | App có backend; muốn chạy nhanh, ổn định, đi cả nút nguy hiểm |
-| 7 | [Luật nghiệp vụ và file intent](07-luat-intent.md) | Muốn kiểm tra quy tắc nghiệp vụ |
-| 8 | [Fuzz](08-fuzz.md) | Muốn tìm chuỗi thao tác hiếm gây lỗi |
-| 9 | [Widget adapter](09-adapter.md) | Có widget kéo thả, lịch, gantt, canvas |
-| 10 | [Plugin Vite và chạy theo file thay đổi](10-plugin-affected.md) | Muốn PR chạy nhanh |
-| 11 | [Chạy trong CI](11-ci.md) | Đưa vào GitHub Actions |
-| 12 | [An toàn và dữ liệu nhạy cảm](12-an-toan.md) | Trước khi chạy trên app có dữ liệu thật |
-| 13 | [Xử lý sự cố](13-xu-ly-su-co.md) | Khi kết quả lạ, nhiễu, hoặc lệnh lỗi |
-| — | [Tham chiếu CLI](tham-chieu-cli.md) | Tra cứu nhanh mọi lệnh và flag |
+| 1 | [Install and first run](01-install.md) | You're starting out |
+| 2 | [The `check` command and its report](02-check.md) | After your first run |
+| 3 | [Configuration: `uiscout.config.json`](03-config.md) | You want saved settings, personas or seed routes |
+| 4 | [The graph page and snapshots](04-graph.md) | You want to *see* the app and its defects |
+| 5 | [Baselines: comparing runs](05-baseline.md) | You want to catch regressions (a control gone, a link that moved) |
+| 6 | [Network modes: live, record, replay](06-network.md) | Your app has a backend; you want fast, stable runs that also walk destructive controls |
+| 7 | [Business rules and intent files](07-rules-intent.md) | You want to check business rules |
+| 8 | [Fuzzing](08-fuzz.md) | You want to find rare action sequences that break things |
+| 9 | [Widget adapters](09-adapters.md) | You have drag-and-drop, calendars, gantts or canvas widgets |
+| 10 | [Vite plugin and affected-only runs](10-plugin-affected.md) | You want pull requests to run fast |
+| 11 | [Running in CI](11-ci.md) | You're adding it to GitHub Actions |
+| 13 | [Safety and sensitive data](13-safety.md) | Before running against an app with real data |
+| 14 | [Troubleshooting](14-troubleshooting.md) | Results look wrong, noisy, or a command fails |
+| — | [CLI reference](cli-reference.md) | You need every command and flag |
 
-## Năm phút đầu tiên
+## The first five minutes
 
 ```sh
-# 1. Cài flowcheck (một lần)
-cd ~/Documents/dev/flowcheck && pnpm install && pnpm exec playwright install chromium
+# 1. Install uiscout (once)
+cd ~/dev/uiscout && pnpm install && pnpm exec playwright install chromium
 
-# 2. Bật app cần test
-cd ~/Documents/dev/my-app && pnpm dev            # ví dụ chạy ở http://localhost:5173
+# 2. Start the app you want to test
+cd ~/dev/my-app && pnpm dev            # e.g. on http://localhost:5173
 
-# 3. Quét và mở bản đồ
-node ~/Documents/dev/flowcheck/src/cli.ts check --url http://localhost:5173/ --open
+# 3. Walk it and open the map
+node ~/dev/uiscout/src/cli.ts check --url http://localhost:5173/ --open
 ```
 
-Lệnh in báo cáo ra terminal, ghi kết quả vào `.flowcheck/` và mở trang graph trên trình duyệt. Có lỗi thì thoát với mã 1.
+The report prints to the terminal, the results go to `.uiscout/`, and the graph page opens in your browser. The command exits with 1 when it found errors.
 
-## Bản đồ khái niệm
+## Concepts
 
-| Thuật ngữ | Nghĩa |
+| Term | Meaning |
 | --- | --- |
-| **Node (màn)** | Một route cộng lớp phủ đang mở: `/calendar`, `/products [Confirm purchase]`. Đoạn id trong URL gộp thành `:id` |
-| **Edge** | Một thao tác (click, gõ chữ, route) và màn nó dẫn tới |
-| **Oracle** | Bộ kiểm tra phán một bước đúng hay sai |
-| **Context** | Một persona (khách, thành viên…) với các bước setup riêng |
-| **Baseline** | Lần chạy đã được chấp nhận, commit trong `flowcheck/`, để so với lần sau |
-| **Snapshot** | Danh sách nút trên một màn (role, tên, vị trí), dùng để phát hiện thay đổi |
-| **Finding** | Một phát hiện: lỗi (error), cảnh báo (warning) hoặc thông tin (info) |
+| **Node (screen)** | A route plus whatever overlay is open: `/calendar`, `/products [Confirm purchase]`. Data IDs in URLs collapse to `:id` |
+| **Edge** | An action (click, typing, route) and the screen it leads to |
+| **Oracle** | A check that decides whether a step is right |
+| **Context** | A persona (guest, member…) with its own setup steps |
+| **Baseline** | An accepted run, committed in `uiscout/`, that later runs are compared to |
+| **Snapshot** | The controls on a screen (role, name, position), used to spot changes |
+| **Finding** | Something a check found: an error, a warning or info |

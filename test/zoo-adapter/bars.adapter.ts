@@ -5,7 +5,7 @@ interface Task { id: string; start: number; end: number; row: number }
 interface State { tasks: Task[]; boxes: Record<string, { left: number; width: number }> }
 
 const read = async (page: Page): Promise<State> => {
-  const tasks = await page.evaluate(() => (window as unknown as { __flowcheck: { bars: { getState(): Task[] } } }).__flowcheck.bars.getState())
+  const tasks = await page.evaluate(() => (window as unknown as { __uiscout: { bars: { getState(): Task[] } } }).__uiscout.bars.getState())
   const boxes = await page.evaluate(() => {
     const track = document.getElementById('track')!.getBoundingClientRect()
     return Object.fromEntries([...document.querySelectorAll<HTMLElement>('.bar')].map((el) => {

@@ -1,51 +1,51 @@
-# 6. Network: live, record, replay
+# 6. Network modes: live, record, replay
 
-| `--mode` | Backend | Dùng khi |
+| `--mode` | Backend | Use it for |
 | --- | --- | --- |
-| `live` (mặc định) | Thật | Chạy trên máy, lần đầu. Không bao giờ bấm nút nguy hiểm |
-| `record` | Thật | Đi như live, đồng thời lưu mọi response API |
-| `replay` | Không có | Trả response từ bản ghi. Nhanh, ổn định, và **đi được cả nút nguy hiểm** |
+| `live` (default) | Real | Local runs, first runs. Destructive controls are never clicked |
+| `record` | Real | Walks like live and keeps every API response |
+| `replay` | None | Answers from the recordings. Fast, stable, and **walks destructive controls too** |
 
-## Ghi lại
-
-```sh
-flowcheck check --mode record
-```
-
-- Mọi API call (fetch, XHR, EventSource, beacon, form POST) ở **mọi origin** được lưu vào `flowcheck/recordings.json`.
-- Khoá của mỗi bản ghi: phương thức, đường dẫn, query (đã sắp xếp); call khác origin ghi kèm origin. Hai POST cùng đường dẫn khác body được phân biệt bằng hash của body.
-- Trước khi ghi, body được **redact**: email, token, JWT, key nhạy cảm (password, token, session, phone, address…) kể cả giá trị lồng nhau; query trong khoá cũng được redact.
-- Tool nhắc xem lại file trước khi commit.
-
-## Phát lại
+## Record
 
 ```sh
-flowcheck check --mode replay
+uiscout check --mode record
 ```
 
-- Mọi API call và form POST được trả lời từ bản ghi, **dù nhắm tới origin nào**.
-- Điều hướng sang site khác được thay bằng một trang giả, để vẫn ghi được edge `external:…`.
-- WebSocket sang origin khác bị đóng. WebSocket cùng origin (thường là hot reload của dev server) vẫn chạy.
-- Chỉ có trang của app và file tĩnh (script, CSS, ảnh, font) được tải thật.
-- Call không có bản ghi: trả 599 và báo **cảnh báo** `GET /api/x has no recording (re-record with --mode record)`.
+- Every API call (fetch, XHR, EventSource, beacon, form POST) to **any origin** is saved in `uiscout/recordings.json`.
+- A recording's key is the method, path and sorted query; calls to another origin include it. Two POSTs to the same path with different bodies are told apart by a hash of the body.
+- Before saving, bodies are **redacted**: emails, tokens, JWTs and sensitive keys (password, token, session, phone, address…) including nested values; query values in keys too.
+- uiscout reminds you to review the file before committing it.
 
-Vì không gì tới được server, replay **đi qua cả nút nguy hiểm** (delete, log out, pay…) và nhấn Enter cả trong form có nút submit nguy hiểm.
-
-## Quy trình đề xuất
+## Replay
 
 ```sh
-flowcheck check --mode record --update   # ghi và chấp nhận một lần, với backend test
-flowcheck check --mode replay --update   # baseline ở mode CI sẽ dùng
-git add flowcheck/ && git commit         # sau khi xem lại recordings.json
-
-flowcheck check --mode replay            # mỗi lần sau: nhanh, không cần backend
+uiscout check --mode replay
 ```
 
-Khi API đổi, chạy lại `--mode record`. Các call báo "has no recording" cho biết bản ghi nào đã cũ.
+- Every API call and form POST is answered from the recordings, **whatever origin it targets**.
+- Navigation to another site gets a stand-in page, so the `external:…` edge is still recorded.
+- WebSockets to other origins are closed. Same-origin sockets (usually the dev server's hot reload) stay open.
+- Only the app's pages and static files (scripts, CSS, images, fonts) load for real.
+- A call with no recording gets status 599 and a **warning**: `GET /api/x has no recording (re-record with --mode record)`.
 
-## Giới hạn
+Since nothing reaches a server, replay **walks destructive controls** (delete, log out, pay…) and presses Enter in forms whose default button is destructive.
 
-- Replay vẫn cho đi các **điều hướng GET cùng origin**. App server-render có route kiểu "GET /logout" vẫn nhận được request đó.
-- Bản ghi là response tĩnh: app phụ thuộc vào thứ tự request (ví dụ tạo rồi đọc lại) có thể thấy dữ liệu khác lúc ghi.
+## Suggested workflow
 
-Tiếp theo: [Luật nghiệp vụ và intent](07-luat-intent.md).
+```sh
+uiscout check --mode record --update   # once, against a test backend
+uiscout check --mode replay --update   # the baseline, in the mode CI uses
+git add uiscout/ && git commit         # after reviewing recordings.json
+
+uiscout check --mode replay            # every time after: fast, no backend
+```
+
+When the API changes, record again. Calls reported as "has no recording" tell you which recordings are stale.
+
+## Limits
+
+- Replay still lets **same-origin GET navigations** through. A server-rendered app with a "GET /logout" route still receives it.
+- Recordings are static: an app that depends on request order (create, then read back) may see different data than when recorded.
+
+Next: [Business rules and intent files](07-rules-intent.md).

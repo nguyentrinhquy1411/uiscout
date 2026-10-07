@@ -11,7 +11,7 @@ describe('identity plugin', () => {
     <p>Total</p>
   </div>
 }`)
-    expect(out).toContain('<button data-fc-src="src/features/cart/CartSummary.tsx:3" data-fc-id="cart.CartSummary.submitOrder" onClick={submitOrder}>')
+    expect(out).toContain('<button data-scout-src="src/features/cart/CartSummary.tsx:3" data-scout-id="cart.CartSummary.submitOrder" onClick={submitOrder}>')
     expect(out).toContain('<p>Total</p>')
     expect(out).toContain('<div>')
   })
@@ -24,10 +24,10 @@ describe('identity plugin', () => {
     <a href="/help">Get help</a>
   </>
 )`, 'src/components/shell/toolbar.tsx')
-    expect(out).toContain('data-fc-id="shell.Toolbar.go"')
-    expect(stamp('function A() { return <button onClick={() => navigate(\'/checkout\')}>Go</button> }')).toContain('data-fc-id="cart.A.navigateCheckout"')
-    expect(out).toContain('data-fc-id="shell.Toolbar.zoomIn"')
-    expect(out).toContain('data-fc-id="shell.Toolbar.getHelp"')
+    expect(out).toContain('data-scout-id="shell.Toolbar.go"')
+    expect(stamp('function A() { return <button onClick={() => navigate(\'/checkout\')}>Go</button> }')).toContain('data-scout-id="cart.A.navigateCheckout"')
+    expect(out).toContain('data-scout-id="shell.Toolbar.zoomIn"')
+    expect(out).toContain('data-scout-id="shell.Toolbar.getHelp"')
   })
 
   it('leaves a developer test ID alone and stamps components that look interactive', () => {
@@ -38,9 +38,9 @@ describe('identity plugin', () => {
     <Card title="x" />
   </nav>
 }`, 'src/components/shell/rail.tsx')
-    expect(out).toContain('<Link data-fc-src="src/components/shell/rail.tsx:3" data-fc-id="shell.Rail.docs" to="/docs">')
-    expect(out).toContain('<button data-fc-src="src/components/shell/rail.tsx:4" data-testid="rail.toggle"')
-    expect(out).not.toContain('<Card data-fc')
+    expect(out).toContain('<Link data-scout-src="src/components/shell/rail.tsx:3" data-scout-id="shell.Rail.docs" to="/docs">')
+    expect(out).toContain('<button data-scout-src="src/components/shell/rail.tsx:4" data-testid="rail.toggle"')
+    expect(out).not.toContain('<Card data-scout')
   })
 
   it('returns null for files with nothing to stamp or that do not parse', () => {

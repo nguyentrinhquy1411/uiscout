@@ -129,13 +129,13 @@ export async function fuzz(options: FuzzOptions): Promise<FuzzFailure[]> {
           const el = candidates[Math.floor(random!() * candidates.length)]
           const fp = fingerprintOf(el)
           const enter = network === 'replay' || !(el.submit && safetyOfText(el.submit) === 'destructive')
-          step = el.role === 'textbox' ? { kind: 'fill', fp, text: options.fillText ?? 'flowcheck', enter } : { kind: 'click', fp }
+          step = el.role === 'textbox' ? { kind: 'fill', fp, text: options.fillText ?? 'uiscout', enter } : { kind: 'click', fp }
           index = el.i
         }
         const label = step.kind === 'route' ? stepLabel(step, '') : stepLabel(step, elementId(node, step.fp))
         monitor.begin(label)
         if (step.kind === 'fill') {
-          const field = page.locator(`[data-fc-i="${index}"]`)
+          const field = page.locator(`[data-scout-i="${index}"]`)
           await field.fill(step.text, { timeout: 3000 }).then(() => (step.kind === 'fill' && step.enter ? field.press('Enter') : undefined)).catch((e: Error) => clickFailure(e.message))
         } else {
           await clickAt(page, index)

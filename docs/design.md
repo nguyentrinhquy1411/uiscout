@@ -6,7 +6,7 @@ Oct 6, 2026 · @Nguyễn Trinh Quý
 
 The tool derives a graph of a frontend from its source code, drives Playwright along every edge, and judges each step with three deterministic oracles. Results land on the pull request as a graph diff plus a list of failures per edge. AI can propose additions, but nothing that gates a merge depends on a model.
 
-This doc uses `flowcheck` as a placeholder name in commands and package names. The real name is an open question.
+This doc uses `uiscout` as a placeholder name in commands and package names. The real name is an open question.
 
 ### Goals
 
@@ -85,11 +85,11 @@ Every interactive element gets a stable semantic ID at build time, plus a finger
 
 An ID has the form `<module>.<Component>.<role>`, for example `checkout.CartSummary.submit`. It is derived from the file path, the component name, and the element's role or handler name. It is never derived from position or index, because those change on every refactor.
 
-Repeated items share one template ID and carry a runtime key, for example `orders.OrderRow.open` with `data-fc-key="A-1042"`. A `data-testid` written by a developer always wins over a generated ID.
+Repeated items share one template ID and carry a runtime key, for example `orders.OrderRow.open` with `data-scout-key="A-1042"`. A `data-testid` written by a developer always wins over a generated ID.
 
 ### Injection
 
-A build plugin (Babel or SWC, wired into Vite and Next) adds a `data-fc-id` attribute to interactive elements. It runs in development and test builds by default. Whether production builds keep the attribute is an open question, because the post-deploy usage overlay needs it.
+A build plugin (Babel or SWC, wired into Vite and Next) adds a `data-scout-id` attribute to interactive elements. It runs in development and test builds by default. Whether production builds keep the attribute is an open question, because the post-deploy usage overlay needs it.
 
 ### Fingerprint and healing
 
@@ -174,7 +174,7 @@ A node's identity is its route plus the set of landmark elements visible on it. 
 
 ### Contexts
 
-`flowcheck.contexts.yaml` names the personas and fixtures the graph is walked under, for example `guest`, `member` and `admin`, each with its own login script and data seed. Guards are evaluated per context, so the same button can lead to different nodes for different roles.
+`uiscout.contexts.yaml` names the personas and fixtures the graph is walked under, for example `guest`, `member` and `admin`, each with its own login script and data seed. Guards are evaluated per context, so the same button can lead to different nodes for different roles.
 
 ### Safety labels
 
@@ -182,7 +182,7 @@ Each edge is `safe`, `mutating` or `destructive`. The default comes from the HTT
 
 ### Diffing
 
-`flowcheck diff` compares two graph versions and reports nodes and edges added, removed and renamed, plus any change of guard, safety label or trust tier.
+`uiscout diff` compares two graph versions and reports nodes and edges added, removed and renamed, plus any change of guard, safety label or trust tier.
 
 ## 6. Runner
 
@@ -190,7 +190,7 @@ The runner turns the graph into Playwright runs that walk every reachable edge o
 
 ### Path planning
 
-The planner computes a set of paths from the entry nodes that covers every edge: it repeatedly takes the shortest path to the nearest uncovered edge. Each path runs as one isolated test in a fresh browser context. `flowcheck gen` writes the same paths out as plain Playwright spec files, so a team can eject at any time.
+The planner computes a set of paths from the entry nodes that covers every edge: it repeatedly takes the shortest path to the nearest uncovered edge. Each path runs as one isolated test in a fresh browser context. `uiscout gen` writes the same paths out as plain Playwright spec files, so a team can eject at any time.
 
 ### Step protocol
 
@@ -259,7 +259,7 @@ The layout checks follow the failure types catalogued in layout-bug research: ov
 Invariants are rules that must hold on every path. They are written in TypeScript with two temporal operators, `always` and `eventually`, and evaluated over the sequence of states the runner observes.
 
 ```ts
-import { always, eventually, when, state } from "@flowcheck/rules";
+import { always, eventually, when, state } from "@uiscout/rules";
 
 export const guestCannotCheckout = always(
   when(() => state.context.is("guest"))
@@ -277,7 +277,7 @@ export const errorToastClears = always(
 );
 ```
 
-Invariants run in two modes. On pull requests they are checked along the planned paths. Nightly, `flowcheck fuzz` takes seeded random walks over the graph and checks the same rules, which finds action sequences nobody planned.
+Invariants run in two modes. On pull requests they are checked along the planned paths. Nightly, `uiscout fuzz` takes seeded random walks over the graph and checks the same rules, which finds action sequences nobody planned.
 
 This is property-based testing applied to UIs, the approach of Quickstrom and its successor [Bombadil](https://wickstrom.tech/2026-01-28-there-and-back-again-from-quickstrom-to-bombadil.html). Whether to integrate Bombadil or ship a minimal evaluator is an open question.
 
@@ -297,7 +297,7 @@ A baseline is what a node looked like when a person last accepted it. It has two
 
 **Component screenshots.** One image per component, never per page, with dynamic regions masked. A pixel difference alone is informational. It becomes a warning only when the structural snapshot changed too.
 
-Baselines are updated with `flowcheck accept`, and the changed files are reviewed in the pull request like any other code.
+Baselines are updated with `uiscout accept`, and the changed files are reviewed in the pull request like any other code.
 
 ### Gating
 
@@ -351,7 +351,7 @@ export interface WidgetAdapter<State, Actions> {
 | Rendering | Method |
 | --- | --- |
 | DOM or SVG | Read attributes and bounding boxes from the elements. |
-| Canvas | Call a debug hook the app exposes in test builds, for example `window.__flowcheck.gantt.getState()`. |
+| Canvas | Call a debug hook the app exposes in test builds, for example `window.__uiscout.gantt.getState()`. |
 | Canvas with no hook | A vision model that detects elements in a screenshot. Last resort, advisory only. |
 
 The debug hook is the durable option. Platforms that render to canvas and still test reliably do it by exposing named handles for their controls.
@@ -409,15 +409,15 @@ On every pull request the tool re-maps the app, walks the affected edges in repl
 ### Pull request pipeline
 
 1. Build the app with the ID plugin.
-2. `flowcheck map` regenerates the graph from source.
+2. `uiscout map` regenerates the graph from source.
 3. If the regenerated graph differs from the committed `app.graph.json`, the pull request must include the update, exactly like a lockfile.
 4. Select the affected edges (see below).
-5. `flowcheck run --mode replay` walks them and runs oracles A, B and C.
-6. `flowcheck report` posts or updates one comment and sets the check status.
+5. `uiscout run --mode replay` walks them and runs oracles A, B and C.
+6. `uiscout report` posts or updates one comment and sets the check status.
 
 ```yaml
-# .github/workflows/flowcheck.yml
-name: flowcheck
+# .github/workflows/uiscout.yml
+name: uiscout
 on: pull_request
 jobs:
   check:
@@ -426,16 +426,16 @@ jobs:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - run: npm ci && npm run build:test
-      - run: npx flowcheck map --check
-      - run: npx flowcheck run --mode replay --affected origin/main
-      - run: npx flowcheck report --github
+      - run: npx uiscout map --check
+      - run: npx uiscout run --mode replay --affected origin/main
+      - run: npx uiscout report --github
         if: always()
 ```
 
 ### The report
 
 ```text
-flowcheck: 2 errors, 1 warning, 41 of 44 affected edges walked
+uiscout: 2 errors, 1 warning, 41 of 44 affected edges walked
 
 Graph diff
   + node   orders/refund
@@ -469,7 +469,7 @@ Every element and edge carries a `file:line` witness. The selector maps the file
 | Pull request | Map check, affected edges in replay mode, oracles A, B and C |
 | Merge to main | Full walk in replay mode, baselines and coverage stored |
 | Nightly | Full walk in live mode against staging, fuzz run, recording drift report |
-| On demand | `flowcheck record` to refresh recordings after an API change |
+| On demand | `uiscout record` to refresh recordings after an API change |
 
 ### After deploy (later milestone)
 
@@ -498,7 +498,7 @@ A proposed edge sits in quarantine with trust tier `proposed`. It does not count
 
 ### MCP server
 
-The core ships no model and needs no API key. `flowcheck mcp` starts a stdio server, and the team's own coding agent connects to it.
+The core ships no model and needs no API key. `uiscout mcp` starts a stdio server, and the team's own coding agent connects to it.
 
 | Tool | Purpose |
 | --- | --- |
@@ -521,8 +521,8 @@ Everything the tool knows about an app is a file in that app's repo.
 ### In the application repo
 
 ```text
-flowcheck.config.ts          entry URLs, build command, thresholds, allow-lists
-flowcheck.contexts.yaml      personas, login scripts, seed hooks
+uiscout.config.ts          entry URLs, build command, thresholds, allow-lists
+uiscout.contexts.yaml      personas, login scripts, seed hooks
 app.graph.json               the verified graph, committed like a lockfile
 src/
   checkout/
@@ -530,7 +530,7 @@ src/
     checkout.rules.ts        invariants (oracle B)
   planning/
     gantt.adapter.ts         actions, state and invariants of a complex widget
-.flowcheck/
+.uiscout/
   snapshots/                 structural snapshots and component screenshots
   recordings/                API responses per edge
   proposals/                 quarantined AI proposals, not used by tests
@@ -540,38 +540,38 @@ src/
 
 | Package | Role | Build or reuse |
 | --- | --- | --- |
-| `@flowcheck/plugin` | Injects semantic IDs at build time | Build |
-| `@flowcheck/graph` | Graph format, extraction, diff, path planning | Reuse uigraph where possible |
-| `@flowcheck/runner` | Edge walking, quiescence, network record and replay | Build, on Playwright |
-| `@flowcheck/oracles` | Generic checks, snapshot diff, layout geometry | Build. This is the core |
-| `@flowcheck/rules` | The `always` and `eventually` rule API and its evaluator | Build, or wrap Bombadil |
-| `@flowcheck/adapters` | Adapter contract and reference adapters | Build |
-| `@flowcheck/ci` | Affected-edge selection, report, GitHub integration | Build |
-| `@flowcheck/mcp` | Model-free MCP server | Build, later |
-| `@flowcheck/cli` | The commands below | Build |
+| `@uiscout/plugin` | Injects semantic IDs at build time | Build |
+| `@uiscout/graph` | Graph format, extraction, diff, path planning | Reuse uigraph where possible |
+| `@uiscout/runner` | Edge walking, quiescence, network record and replay | Build, on Playwright |
+| `@uiscout/oracles` | Generic checks, snapshot diff, layout geometry | Build. This is the core |
+| `@uiscout/rules` | The `always` and `eventually` rule API and its evaluator | Build, or wrap Bombadil |
+| `@uiscout/adapters` | Adapter contract and reference adapters | Build |
+| `@uiscout/ci` | Affected-edge selection, report, GitHub integration | Build |
+| `@uiscout/mcp` | Model-free MCP server | Build, later |
+| `@uiscout/cli` | The commands below | Build |
 
 ### CLI
 
 | Command | What it does |
 | --- | --- |
-| `flowcheck init` | Detects the framework, adds the plugin, writes a starter config |
-| `flowcheck map [--check]` | Regenerates the graph. With `--check`, fails if it differs from the committed file |
-| `flowcheck record` | Walks the graph against a real backend and saves recordings |
-| `flowcheck run [--mode] [--affected <ref>]` | Walks edges and runs the oracles |
-| `flowcheck check` | `map` plus `run` in one step, for local use and first-time demos |
-| `flowcheck accept [node]` | Accepts current snapshots as the new baseline |
-| `flowcheck diff <a> <b>` | Structural diff between two graph versions |
-| `flowcheck fuzz [--seed]` | Seeded random walks checking invariants |
-| `flowcheck gen` | Writes the planned paths as plain Playwright spec files |
-| `flowcheck report [--github]` | Renders the latest run as text, HTML or a pull request comment |
-| `flowcheck mcp` | Starts the MCP server |
+| `uiscout init` | Detects the framework, adds the plugin, writes a starter config |
+| `uiscout map [--check]` | Regenerates the graph. With `--check`, fails if it differs from the committed file |
+| `uiscout record` | Walks the graph against a real backend and saves recordings |
+| `uiscout run [--mode] [--affected <ref>]` | Walks edges and runs the oracles |
+| `uiscout check` | `map` plus `run` in one step, for local use and first-time demos |
+| `uiscout accept [node]` | Accepts current snapshots as the new baseline |
+| `uiscout diff <a> <b>` | Structural diff between two graph versions |
+| `uiscout fuzz [--seed]` | Seeded random walks checking invariants |
+| `uiscout gen` | Writes the planned paths as plain Playwright spec files |
+| `uiscout report [--github]` | Renders the latest run as text, HTML or a pull request comment |
+| `uiscout mcp` | Starts the MCP server |
 
 ### The five-minute path
 
 The first experience decides adoption, so it must need no setup beyond a running app:
 
 ```text
-npx flowcheck check --url http://localhost:3000
+npx uiscout check --url http://localhost:3000
 ```
 
 With no plugin installed and no recordings, this falls back to fingerprints for identity and a live backend for the network, and walks only edges it can label safe. It still produces a graph and the oracle A findings, which is enough to show value before asking for any change to the codebase.
@@ -583,7 +583,7 @@ Seven milestones, each gated by an exit criterion. Nothing after M1 matters if M
 | Milestone | Scope | Exit criterion |
 | --- | --- | --- |
 | M0 Spike | Run uigraph on one real React app. Count edges by hand on five screens and compare. | A written decision: reuse its format directly, or keep an own schema with import and export. |
-| M1 Zero-spec check | Runner, quiescence, oracle A, fingerprint identity, text report. `npx flowcheck check` works on an unmodified app. | At least one confirmed real defect on each of three open-source apps, with under 10% false positives. |
+| M1 Zero-spec check | Runner, quiescence, oracle A, fingerprint identity, text report. `npx uiscout check` works on an unmodified app. | At least one confirmed real defect on each of three open-source apps, with under 10% false positives. |
 | M2 Baselines and pull requests | ID plugin, record and replay, oracle C, graph diff, affected-edge selection, GitHub comment. | One real repo runs it on every pull request for two weeks without the team disabling it. |
 | M3 Rules and intent | Rule API, oracle B on planned paths, intent files, intent coverage, fuzz mode. | Ten intent lines linked to passing rules in one module of a real app. |
 | M4 Widget adapters | Adapter contract, harness pages, sequence shrinking, one reference gantt adapter. | The gantt adapter finds a seeded bug that no button-level edge can reach. |
@@ -616,7 +616,7 @@ The largest risk is noise: a report that cries wolf gets the tool switched off w
 - [ ] What is the project's name?
 - [ ] Reuse the uigraph format directly, or keep an own schema with import and export? M0 decides.
 - [ ] Integrate Bombadil for invariants, or ship a minimal evaluator?
-- [ ] Should production builds keep the `data-fc-id` attribute? The usage overlay needs it; some teams will refuse it.
+- [ ] Should production builds keep the `data-scout-id` attribute? The usage overlay needs it; some teams will refuse it.
 - [ ] Which router comes first: react-router or Next.js?
 - [ ] Which license: MIT or Apache-2.0?
 - [ ] Does the first gantt to support render with DOM, SVG or canvas?

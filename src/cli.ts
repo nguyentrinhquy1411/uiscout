@@ -16,21 +16,21 @@ import { renderDiff, renderMarkdown, renderText } from './report.ts'
 import type { Finding, Graph } from './types.ts'
 
 /*
- * flowcheck check --url http://localhost:5173 — the five-minute path (design doc §12):
+ * uiscout check --url http://localhost:5173 — the five-minute path (design doc §12):
  * no plugin, no recordings, a live app, only safe edges. Settings come from
- * flowcheck.config.json when present; flags override them. Writes the graph and the
+ * uiscout.config.json when present; flags override them. Writes the graph and the
  * findings under --out and prints the report. Exits 1 when there are errors.
  */
 
-const USAGE = `Usage: flowcheck check [--url <url>] [options]
-       flowcheck diff <before.graph.json> <after.graph.json>
-       flowcheck graph [<graph.json>] [--open] [--out <dir>]
-       flowcheck fuzz [--url <url>] [--seed <n>] [--runs <n>] [--length <n>]
-       flowcheck adapters [--url <url>] [--dir <dir>] [--seed <n>] [--runs <n>] [--length <n>]
+const USAGE = `Usage: uiscout check [--url <url>] [options]
+       uiscout diff <before.graph.json> <after.graph.json>
+       uiscout graph [<graph.json>] [--open] [--out <dir>]
+       uiscout fuzz [--url <url>] [--seed <n>] [--runs <n>] [--length <n>]
+       uiscout adapters [--url <url>] [--dir <dir>] [--seed <n>] [--runs <n>] [--length <n>]
 
-  --config <file>       Settings file (default ./flowcheck.config.json when it exists)
+  --config <file>       Settings file (default ./uiscout.config.json when it exists)
   --url <url>           Entry URL of a running app
-  --out <dir>           Where to write graph.json, findings.json, report.txt, report.md (default .flowcheck)
+  --out <dir>           Where to write graph.json, findings.json, report.txt, report.md (default .uiscout)
   --depth <n>           Actions deep from the entry (default 2)
   --max-steps <n>       Total actions (default 250)
   --seeds <paths>       Comma-separated routes no link reaches, e.g. "/legacy,/404"
@@ -44,7 +44,7 @@ const USAGE = `Usage: flowcheck check [--url <url>] [options]
   --concurrency <n>     Nodes explored in parallel (default 4)
   --mode <mode>         live (real backend), record (real backend, keep responses) or
                         replay (recordings only; destructive controls are walked)
-  --baseline <dir>      Accepted graph and snapshots to compare against (default ./flowcheck)
+  --baseline <dir>      Accepted graph and snapshots to compare against (default ./uiscout)
   --update              Accept this run as the new baseline instead of comparing
   --affected <ref>      Walk only the screens built from files changed since <ref> (and the
                         screens leading to them); falls back to a full run when it can't tell
@@ -67,7 +67,7 @@ async function main() {
     options: {
       config: { type: 'string' },
       url: { type: 'string' },
-      out: { type: 'string', default: '.flowcheck' },
+      out: { type: 'string', default: '.uiscout' },
       depth: { type: 'string' },
       'max-steps': { type: 'string' },
       seeds: { type: 'string' },
@@ -107,14 +107,14 @@ async function main() {
     process.exit(isEmptyDiff(diff) ? 0 : 1)
   }
 
-  const configPath = values.config ?? (existsSync('flowcheck.config.json') ? 'flowcheck.config.json' : undefined)
+  const configPath = values.config ?? (existsSync('uiscout.config.json') ? 'uiscout.config.json' : undefined)
   const file: FileConfig = configPath ? await loadConfig(configPath) : {}
   const url = values.url ?? file.url
   if (positionals[0] === 'graph') {
     // The graph page (no browser run): the last run's graph with its findings, or a baseline.
-    const candidates = positionals[1] ? [positionals[1]] : [path.join(values.out, 'graph.json'), path.join(values.baseline ?? file.baseline ?? 'flowcheck', 'app.graph.json')]
+    const candidates = positionals[1] ? [positionals[1]] : [path.join(values.out, 'graph.json'), path.join(values.baseline ?? file.baseline ?? 'uiscout', 'app.graph.json')]
     const source = candidates.find((f) => existsSync(f))
-    if (!source) throw new Error(`no graph found (looked for ${candidates.join(', ')}): run flowcheck check first`)
+    if (!source) throw new Error(`no graph found (looked for ${candidates.join(', ')}): run uiscout check first`)
     const dir = path.dirname(source)
     const findingsFile = path.join(dir, 'findings.json')
     const findings = existsSync(findingsFile) ? ((JSON.parse(await readFile(findingsFile, 'utf8')) as { findings: Finding[] }).findings) : null
@@ -165,7 +165,7 @@ async function main() {
         lines.push(...f.steps.map((s, i) => `    ${i + 1}. ${s.action} ${JSON.stringify(s.args)}`))
       }
     }
-    process.stdout.write(`flowcheck adapters (seed ${seed})\n${lines.join('\n')}\n`)
+    process.stdout.write(`uiscout adapters (seed ${seed})\n${lines.join('\n')}\n`)
     process.exit(failed ? 1 : 0)
   }
 
@@ -173,7 +173,7 @@ async function main() {
     // Seeded random walks against the invariants and the generic oracles (§7B); nightly.
     const seed = num(values.seed) ?? Math.floor(Math.random() * 1e9)
     const network = (values.mode ?? file.network ?? 'live') as NetworkMode
-    const baselineDir = path.resolve(values.baseline ?? file.baseline ?? 'flowcheck')
+    const baselineDir = path.resolve(values.baseline ?? file.baseline ?? 'uiscout')
     const failures = await fuzz({
       url,
       seed,
@@ -192,7 +192,7 @@ async function main() {
     const out = path.resolve(values.out)
     await mkdir(out, { recursive: true })
     await writeFile(path.join(out, 'fuzz.json'), `${JSON.stringify({ seed, failures }, null, 2)}\n`)
-    const lines = [`flowcheck fuzz (seed ${seed}): ${failures.length} failure${failures.length === 1 ? '' : 's'}`]
+    const lines = [`uiscout fuzz (seed ${seed}): ${failures.length} failure${failures.length === 1 ? '' : 's'}`]
     for (const f of failures) {
       lines.push('', `  ${f.what}`, `  seed ${f.seed}, shrunk from ${f.original} to ${f.steps.length} step${f.steps.length === 1 ? '' : 's'}:`)
       lines.push(...(f.steps.length ? f.steps.map((s, i) => `    ${i + 1}. ${s}`) : ['    (on load)']))
@@ -208,7 +208,7 @@ async function main() {
 
   const started = Date.now()
   const now = values.now ?? file.now
-  const baselineDir = path.resolve(values.baseline ?? file.baseline ?? 'flowcheck')
+  const baselineDir = path.resolve(values.baseline ?? file.baseline ?? 'uiscout')
   const network = (values.mode ?? file.network ?? 'live') as NetworkMode
   if (!['live', 'record', 'replay'].includes(network)) throw new Error(`--mode must be live, record or replay, not "${network}"`)
   const recordingsFile = path.join(baselineDir, 'recordings.json')
@@ -227,7 +227,7 @@ async function main() {
       : { only: null, scope: new Set(), reason: 'full run: no baseline to select from' }
     process.stderr.write(`  affected: ${selection.reason}\n`)
     if (selection.only && !Object.keys(selection.only).length) {
-      process.stdout.write(`flowcheck: nothing to walk (${selection.reason})\n`)
+      process.stdout.write(`uiscout: nothing to walk (${selection.reason})\n`)
       process.exit(0)
     }
   }
@@ -294,7 +294,7 @@ async function main() {
   await writeFile(path.join(out, 'graph.json'), `${JSON.stringify(result.graph, null, 2)}\n`)
   await writeFile(path.join(out, 'findings.json'), `${JSON.stringify({ findings: result.findings, skipped: result.skipped, healed: result.healed, restless: result.restless, flaky: result.flaky }, null, 2)}\n`)
   await writeFile(path.join(out, 'report.txt'), `${text}\n`)
-  // The graph page, so every run can be looked at: flowcheck graph --open, or --open here.
+  // The graph page, so every run can be looked at: uiscout graph --open, or --open here.
   await writeFile(path.join(out, 'snapshots.json'), `${JSON.stringify(result.snapshots, null, 2)}\n`)
   const screensDir = path.join(out, 'screens')
   await rm(screensDir, { recursive: true, force: true })

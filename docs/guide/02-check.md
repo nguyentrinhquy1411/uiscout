@@ -1,42 +1,42 @@
-# 2. Lệnh `check` và cách đọc báo cáo
+# 2. The `check` command and its report
 
-`flowcheck check` là lệnh chính: đi app, phán từng bước, ghi kết quả.
+`uiscout check` is the main command: walk the app, judge every step, write the results.
 
-## Tool đi app như thế nào
+## How it walks
 
-1. Mở URL gốc trong Chromium (viewport 1280×800, locale en-US, múi giờ Asia/Ho_Chi_Minh, tắt animation).
-2. Ở mỗi màn, liệt kê mọi phần tử tương tác đang nhìn thấy. Khi có dialog/menu đang mở, chỉ lấy phần tử bên trong nó.
-3. Thao tác từng phần tử:
-   - button, link, tab, menu item, checkbox, switch… được **click**;
-   - ô nhập được **gõ** chữ `flowcheck` rồi nhấn **Enter**;
-   - combobox, slider chưa được thao tác.
-4. Sau mỗi bước: chờ không còn request và DOM đứng yên 250 ms, tua đồng hồ trang thêm 5 giây, chờ lần nữa, rồi chạy các oracle.
-5. Thao tác dẫn sang màn mới thì màn đó được đi tiếp, tới độ sâu `--depth`.
+1. Opens the URL in Chromium (1280×800 viewport, `en-US` locale, `Asia/Ho_Chi_Minh` time zone, animations off).
+2. On each screen, lists every visible interactive element. While a dialog or menu is open, only the elements inside it.
+3. Acts on each element:
+   - buttons, links, tabs, menu items, checkboxes and switches are **clicked**;
+   - text fields get the text `uiscout` typed into them, then **Enter**;
+   - comboboxes and sliders are recorded but not operated yet.
+4. After each step: waits until no request is in flight and the DOM has been still for 250 ms, fast-forwards the page clock by 5 s, waits again, then runs the oracles.
+5. A step that leads to a new screen queues that screen, up to `--depth`.
 
-Mỗi màn chạy trong một **browser context mới** (IndexedDB, localStorage, cookie sạch), 4 màn song song.
+Every screen is explored in a **fresh browser context** (clean IndexedDB, localStorage and cookies), four screens at a time.
 
-## Các flag hay dùng
+## Common flags
 
-| Flag | Mặc định | Khi nào dùng |
+| Flag | Default | Use it to |
 | --- | --- | --- |
-| `--url <url>` | — | Bắt buộc nếu không có config |
-| `--depth <n>` | 2 | Số thao tác tối đa tính từ màn gốc. 1 là nhanh, 2–3 là sâu |
-| `--max-steps <n>` | 250 | Trần tổng số thao tác; app lớn nên tăng |
-| `--block <globs>` | — | Chặn API tốn tiền hoặc thay đổi theo thời gian: `"**/api/ai/**,**/analytics/**"` |
-| `--now <iso>` | giờ thật | Cố định thời gian app thấy, để chạy lại ra như cũ |
-| `--open` | — | Mở trang graph khi xong |
-| `--no-a11y` | bật | Bỏ kiểm tra accessibility (nhanh hơn) |
-| `--fast-forward <ms>` | 5000 | Tua đồng hồ sau mỗi bước; `0` để tắt (nhanh hơn, nhưng không thấy chuyển trang muộn) |
-| `--headed` | — | Hiện cửa sổ trình duyệt để xem tool đang làm gì |
+| `--url <url>` | — | Point at the app (required without a config file) |
+| `--depth <n>` | 2 | Limit actions from the entry. 1 is quick, 2–3 is thorough |
+| `--max-steps <n>` | 250 | Cap the total actions; raise it for large apps |
+| `--block <globs>` | — | Block paid or noisy APIs: `"**/api/ai/**,**/analytics/**"` |
+| `--now <iso>` | real time | Fix the time the app sees, so reruns match |
+| `--open` | — | Open the graph page when the run ends |
+| `--no-a11y` | on | Skip accessibility checks (faster) |
+| `--fast-forward <ms>` | 5000 | Clock fast-forward after each step; `0` turns it off (faster, misses delayed navigation) |
+| `--headed` | — | Show the browser window |
 
-Toàn bộ flag: [tham chiếu CLI](tham-chieu-cli.md).
+Every flag: [CLI reference](cli-reference.md).
 
-## Đọc báo cáo
+## Reading the report
 
 ```text
-flowcheck: 1 errors, 2 warnings · 11 nodes, 223 edges, 227 steps
+uiscout: 1 errors, 2 warnings · 11 nodes, 223 edges, 227 steps
 
-Graph diff (vs flowcheck/app.graph.json)          ← chỉ khi có baseline
+Graph diff (vs uiscout/app.graph.json)          ← only with a baseline
   (no change)
 
 Errors (1)
@@ -47,9 +47,9 @@ Warnings (2)
   a11y         button-name: Buttons must have discernible text — #nameless
                at load /broken.html
 
-Changes (3)                                         ← info: nút mới so với baseline
+Changes (3)                                      ← info: new controls since the baseline
 
-Intent coverage 2 of 6 lines                        ← chỉ khi có *.intent.md
+Intent coverage 2 of 6 lines                     ← only with *.intent.md files
 
 Healed lookups (8): found by similarity, not exact match
 Flaky (1): failed, then passed from a fresh context
@@ -57,74 +57,74 @@ Never settled (7): DOM kept changing, judged after the timeout
 Not walked: 2 destructive, 1 input, 39 repeat
 ```
 
-### Dòng đầu
+### First line
 
-Số lỗi và cảnh báo **đếm theo nội dung**: cùng một lỗi xuất hiện trên 7 màn tính là 1. Sau đó là số màn, edge và bước đã đi.
+Errors and warnings are counted **by message**: the same error on seven screens counts once. Then the number of screens, edges and steps walked.
 
-### Errors và Warnings
+### Errors and warnings
 
-Mỗi mục có ba dòng:
-- **oracle** gây ra (script, network, dead-control, layout, a11y, transition, structure, rule) và thông điệp;
-- **at**: nơi xảy ra. `load /x` là lúc vừa vào màn `/x`; `/x → click Y` là sau khi bấm Y trên màn `/x`. Nếu nhiều nơi thì liệt kê 3 nơi đầu và số còn lại;
-- **via** (chỉ với vi phạm luật): chuỗi bước từ đầu dẫn tới vi phạm.
+Each entry has up to three lines:
+- the **oracle** that raised it and its message;
+- **at**: where it happened. `load /x` means on arriving at `/x`; `/x → click Y` means after clicking Y on `/x`. With several places, the first three and a count;
+- **via** (rule violations only): the steps from the entry to the violation.
 
-| Oracle | Báo khi | Mức |
+| Oracle | Raised when | Severity |
 | --- | --- | --- |
-| `script` | Exception không bắt, `console.error` | Lỗi |
-| `network` | Request cùng origin trả 5xx, 4xx không được cho phép, hoặc hỏng | Lỗi |
-| `dead-control` | Click không trúng (bị che, bị chặn), hoặc không điểm nào bấm được | Lỗi |
-| `transition` | Thao tác dẫn tới màn khác với baseline; hoặc setup context hỏng | Lỗi / cảnh báo |
-| `structure` | Nút biến mất, đổi tên (lỗi); dịch chuyển > 16 px (cảnh báo); nút mới (info) | Tuỳ |
-| `rule` | Luật nghiệp vụ bị vi phạm | Lỗi |
-| `layout` | Hai nút chồng nhau ≥ 25%; chữ bị cắt không có "…" | Cảnh báo |
-| `a11y` | Luật axe mức serious/critical (trừ độ tương phản màu) | Cảnh báo |
+| `script` | An uncaught exception, or `console.error` | Error |
+| `network` | A same-origin request returns 5xx, an unexpected 4xx, or fails | Error |
+| `dead-control` | A click can't land (covered, intercepted), or no point of the control is clickable | Error |
+| `transition` | An action leads somewhere other than in the baseline; a context's setup failed | Error or warning |
+| `structure` | A control gone or renamed (error); moved over 16 px (warning); new (info) | Varies |
+| `rule` | A business rule broke | Error |
+| `layout` | Two controls overlap by ≥ 25 %; text clipped without an ellipsis | Warning |
+| `a11y` | A serious or critical axe rule (colour contrast excluded) | Warning |
 
-### Các mục bên dưới
+### The sections below
 
-| Mục | Nghĩa | Có cần làm gì không |
+| Section | Meaning | Action |
 | --- | --- | --- |
-| **Healed lookups** | Tool tìm lại một nút theo độ giống, không khớp hoàn toàn (vị trí hoặc tên hơi khác) | Thường không. Nhiều quá thì cân nhắc thêm `data-testid` |
-| **Flaky** | Bước hỏng lần đầu, chạy lại trong context mới thì qua. Không làm fail run | Xem nếu lặp lại nhiều lần |
-| **Never settled** | DOM không đứng yên sau 4 giây (đồng hồ chạy, animation vô hạn). Bước vẫn được phán | Không, trừ khi kèm lỗi |
-| **Not walked** | Phần tử không được thao tác, kèm lý do | Xem bảng dưới |
+| **Healed lookups** | A control was found again by similarity, not an exact match (moved, or slightly renamed) | Usually none. Many of them: consider `data-testid` |
+| **Flaky** | A step failed, then passed when retried from a fresh context. Never fails the run | Look if it keeps happening |
+| **Never settled** | The DOM never stayed still for 4 s (a ticking clock, an endless animation). The step was still judged | None, unless it comes with errors |
+| **Not walked** | Elements not acted on, with the reason | See below |
 
-| Lý do "Not walked" | Nghĩa |
+| "Not walked" reason | Meaning |
 | --- | --- |
-| `destructive` | Tên nút nghe như phá dữ liệu (delete, xoá, clear, send, log out, pay…). Đi được bằng [replay](06-network.md) |
-| `disabled` | Nút đang bị disable |
-| `input` | Combobox, slider: chưa hỗ trợ |
-| `new-tab` | Link mở tab mới |
-| `external` | Link ra site khác |
-| `repeat` | Nút có sẵn ở màn gốc (thanh rail…): chỉ đi ở màn gốc |
-| `not-found` | Không tìm lại được nút sau khi quay về màn |
-| `budget` | Hết `--max-steps` |
+| `destructive` | The name sounds destructive (delete, remove, clear, send, log out, pay…). Walk them with [replay](06-network.md) |
+| `disabled` | The control is disabled |
+| `input` | A combobox or slider: not supported yet |
+| `new-tab` | The link opens a new tab |
+| `external` | The link leaves the site |
+| `repeat` | The control is already on the entry screen (the app's nav rail): walked there only |
+| `not-found` | The control couldn't be found again after returning to the screen |
+| `budget` | `--max-steps` ran out |
 
-## Mã thoát
+## Exit codes
 
-| Mã | Nghĩa |
+| Code | Meaning |
 | --- | --- |
-| 0 | Không có lỗi mức error (cảnh báo không làm fail) |
-| 1 | Có ít nhất một lỗi |
-| 2 | Sai cách dùng, hoặc tool gặp sự cố |
+| 0 | No error-level findings (warnings don't fail a run) |
+| 1 | At least one error |
+| 2 | Wrong usage, or uiscout itself failed |
 
-## Giảm nhiễu
+## Cutting noise
 
-| Triệu chứng | Cách xử lý |
+| Symptom | Fix |
 | --- | --- |
-| Các phần tử chồng nhau theo thiết kế (event lịch xếp chồng) | `--allow-overlap "[data-event-id]"` |
-| Một 404 là bình thường (kiểm tra phiên đăng nhập…) | `--allow-4xx "GET /api/me"` hoặc `--allow-4xx 404` |
-| `console.error` từ thư viện ngoài, không phải lỗi app | `"ignoreConsole": ["chuỗi con của thông điệp"]` trong config |
-| API ngoài làm chậm hoặc tốn tiền | `--block "**/api/ai/**"` |
-| Ngày giờ trong UI làm snapshot đổi mỗi ngày | `--now 2026-10-07T09:00:00+07:00` |
+| Elements overlap by design (stacked calendar events) | `--allow-overlap "[data-event-id]"` |
+| A 4xx is expected (a session check) | `--allow-4xx "GET /api/me"` or `--allow-4xx 404` |
+| `console.error` from a third-party library | `"ignoreConsole": ["part of the message"]` in the config |
+| An external API is slow or costs money | `--block "**/api/ai/**"` |
+| Dates in the UI change the snapshots every day | `--now 2026-10-07T09:00:00+07:00` |
 
-## Thời gian chạy
+## How long it takes
 
-Khoảng 0,4–2 giây mỗi bước. Các màn chạy song song, nhưng các bước trong một màn chạy tuần tự, nên tổng thời gian gần bằng thời gian của màn có nhiều nút nhất. Tham khảo (app calendar, 11 màn):
+Roughly 0.4–2 s per step. Screens run in parallel, but the steps on one screen run one after another, so the total is close to the time of the busiest screen. For reference, on a calendar app with 11 screens:
 
-| Cấu hình | Thời gian |
+| Setting | Time |
 | --- | --- |
-| depth 1, mặc định | khoảng 110 giây |
-| depth 1, `--no-a11y --fast-forward 0` | khoảng 70 giây |
-| depth 2 (31 màn, 431 bước) | khoảng 4 phút |
+| depth 1, defaults | about 110 s |
+| depth 1, `--no-a11y --fast-forward 0` | about 70 s |
+| depth 2 (31 screens, 431 steps) | about 4 min |
 
-Tiếp theo: [File cấu hình](03-cau-hinh.md).
+Next: [Configuration](03-config.md).

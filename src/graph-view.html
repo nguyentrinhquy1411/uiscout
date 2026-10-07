@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>flowcheck graph</title>
+<title>uiscout graph</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
@@ -136,7 +136,7 @@ pre.snap { font: 400 11px/1.5 var(--font-mono); background: var(--bg); border: 1
 <body>
 <div class="wrap">
   <header>
-    <h1><span class="dot" aria-hidden="true"></span><span id="title">flowcheck graph</span></h1>
+    <h1><span class="dot" aria-hidden="true"></span><span id="title">uiscout graph</span></h1>
     <div class="stats" id="stats"></div>
     <div class="tools">
       <span><span class="sw route"></span>Screen</span>
@@ -153,7 +153,7 @@ pre.snap { font: 400 11px/1.5 var(--font-mono); background: var(--bg); border: 1
 </div>
 <dialog class="zoom" id="zoom" aria-label="Screen snapshot"><div class="bar"><span id="zoom-title"></span><button type="button" id="zoom-close">Close (Esc)</button></div><div id="zoom-body"></div></dialog>
 <script>
-const DATA = /*__FLOWCHECK_DATA__*/null
+const DATA = /*__UISCOUT_DATA__*/null
 
 const graph = DATA.graph
 const findings = DATA.findings || []
@@ -337,7 +337,7 @@ function select(id) {
   for (const b of panel.querySelectorAll('[data-go]')) b.addEventListener('click', () => { select(b.dataset.go); nodeEls.get(b.dataset.go)?.scrollIntoView?.({ block: 'center', inline: 'center' }) })
 }
 
-// The screen as flowcheck saw it on arrival: the screenshot, the structural snapshot
+// The screen as uiscout saw it on arrival: the screenshot, the structural snapshot
 // drawn over it (one box per control, coloured by role), and the snapshot as text.
 let shotMode = 'both'
 const ROLE_CLASS = { button: '', link: 'link', textbox: 'field', combobox: 'field', checkbox: 'field', switch: 'field', radio: 'field', slider: 'field' }
@@ -399,8 +399,8 @@ document.getElementById('q').addEventListener('input', (ev) => {
 const errors = new Set(findings.filter((f) => f.severity === 'error').map((f) => `${f.oracle}|${f.message}`)).size
 const warnings = new Set(findings.filter((f) => f.severity === 'warning').map((f) => `${f.oracle}|${f.message}`)).size
 const stays = graph.edges.filter((e) => e.from === e.to).length
-document.getElementById('title').textContent = `flowcheck · ${new URL(graph.entry).host}`
-document.title = `flowcheck · ${new URL(graph.entry).host}`
+document.getElementById('title').textContent = `uiscout · ${new URL(graph.entry).host}`
+document.title = `uiscout · ${new URL(graph.entry).host}`
 document.getElementById('stats').innerHTML = `<b>${graph.nodes.length}</b> screens · <b>${graph.edges.length}</b> edges (${graph.edges.length - stays} move, ${stays} in place)`
   + (DATA.findings ? ` · <span class="${errors ? 'e' : ''}">${errors} errors</span> · <span class="${warnings ? 'w' : ''}">${warnings} warnings</span>` : '')
   + ` · <span title="${esc(DATA.source)}">${esc(DATA.label)}</span>`

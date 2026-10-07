@@ -9,7 +9,7 @@ export type Severity = 'error' | 'warning' | 'info'
 
 /** What the page tells us about one interactive element. Collected in the browser. */
 export interface RawElement {
-  /** Index stamped on the element as data-fc-i for this snapshot only. */
+  /** Index stamped on the element as data-scout-i for this snapshot only. */
   i: number
   tag: string
   role: string
@@ -20,7 +20,7 @@ export interface RawElement {
   href: string | null
   target: string | null
   disabled: boolean
-  /** Where the element is in the app's source (data-fc-src from the identity plugin): "src/x.tsx:42". */
+  /** Where the element is in the app's source (data-scout-src from the identity plugin): "src/x.tsx:42". */
   source: string | null
   /** For a field: the name of the button Enter would press (its form's default submit), if any. */
   submit: string | null

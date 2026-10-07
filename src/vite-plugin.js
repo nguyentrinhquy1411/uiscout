@@ -5,8 +5,8 @@ import { parseSync } from 'oxc-parser'
 /*
  * The identity plugin (design doc §4): stamps every interactive JSX element with
  *
- *   data-fc-src="src/features/cart/CartSummary.tsx:48"   where it is in the source
- *   data-fc-id="cart.CartSummary.submitOrder"             a stable semantic ID, when one can be derived
+ *   data-scout-src="src/features/cart/CartSummary.tsx:48"   where it is in the source
+ *   data-scout-id="cart.CartSummary.submitOrder"             a stable semantic ID, when one can be derived
  *
  * The source is the witness that maps a changed file to the screens it touches
  * (affected-edge selection, §10). The ID is <module>.<Component>.<hint>, from the
@@ -17,8 +17,8 @@ import { parseSync } from 'oxc-parser'
  * and a Vite config imports this file directly.
  *
  *   // vite.config.ts
- *   import { flowcheckIds } from 'flowcheck/vite'
- *   plugins: [mode === 'test' && flowcheckIds(), react()]
+ *   import { uiscoutIds } from 'uiscout/vite'
+ *   plugins: [mode === 'test' && uiscoutIds(), react()]
  */
 
 const INTERACTIVE_TAGS = new Set(['a', 'button', 'input', 'select', 'textarea', 'summary', 'details', 'label'])
@@ -28,11 +28,11 @@ const HANDLERS = /^on(Click|DoubleClick|KeyDown|KeyUp|Submit|Change|Input|Pointe
  * @param {{ include?: RegExp, root?: string }} [options]
  * @returns {import('vite').Plugin}
  */
-export function flowcheckIds(options = {}) {
+export function uiscoutIds(options = {}) {
   const include = options.include ?? /\/src\/.*\.[jt]sx$/
   let root = options.root ?? process.cwd()
   return {
-    name: 'flowcheck-ids',
+    name: 'uiscout-ids',
     enforce: 'pre',
     configResolved(config) {
       root = options.root ?? config.root
@@ -117,7 +117,7 @@ function stampFor(node, component, module, relPath, lineOf) {
   if (!tag) return null
   const attrs = opening.attributes.filter((a) => a.type === 'JSXAttribute' && a.name.type === 'JSXIdentifier')
   const has = (n) => attrs.some((a) => a.name.name === n)
-  if (has('data-fc-src')) return null
+  if (has('data-scout-src')) return null
   const intrinsic = /^[a-z]/.test(tag)
   const handler = attrs.find((a) => HANDLERS.test(a.name.name))
   const interactive = intrinsic
@@ -125,10 +125,10 @@ function stampFor(node, component, module, relPath, lineOf) {
     : Boolean(handler) || has('href') || has('to') || /Button|Link|Trigger|Item|Tab|Checkbox|Switch|Toggle/.test(tag)
   if (!interactive) return null
 
-  let stamp = ` data-fc-src="${relPath}:${lineOf(opening.start)}"`
-  if (!has('data-testid') && !has('data-fc-id')) {
+  let stamp = ` data-scout-src="${relPath}:${lineOf(opening.start)}"`
+  if (!has('data-testid') && !has('data-scout-id')) {
     const hint = hintOf(handler, attrs, node)
-    if (hint && component) stamp += ` data-fc-id="${module}.${component}.${hint}"`
+    if (hint && component) stamp += ` data-scout-id="${module}.${component}.${hint}"`
   }
   return stamp
 }
