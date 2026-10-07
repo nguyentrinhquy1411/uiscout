@@ -1,6 +1,6 @@
 # flowcheck
 
-Graph-driven frontend testing (design: [`docs/design.md`](docs/design.md)). Milestone M1, the zero-spec check: point it at a running app, it clicks every safe control and types into every field on every screen it can reach, once per persona, and judges each step with deterministic oracles. No plugin, no spec, no model.
+Graph-driven frontend testing (design: [`docs/design.md`](docs/design.md)). **User guide (Vietnamese): [`docs/guide/`](docs/guide/README.md).** Milestone M1, the zero-spec check: point it at a running app, it clicks every safe control and types into every field on every screen it can reach, once per persona, and judges each step with deterministic oracles. No plugin, no spec, no model.
 
 ```sh
 pnpm install
@@ -41,7 +41,7 @@ Setup steps: `goto` (full load), `route` (in-app, through the history API, so in
 | A control moved or resized by more than 16 px | Warning |
 | A new control | Info |
 
-`flowcheck diff a.json b.json` compares any two graphs. Each run also writes `report.md` for the pull request; see [docs/ci.md](docs/ci.md) and [examples/github-workflow.yml](examples/github-workflow.yml).
+`flowcheck diff a.json b.json` compares any two graphs. Each run also writes `report.md` for the pull request; see [docs/guide/11-ci.md](docs/guide/11-ci.md) and [examples/github-workflow.yml](examples/github-workflow.yml).
 
 ## Identity plugin and affected runs
 
