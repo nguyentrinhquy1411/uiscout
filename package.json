@@ -15,8 +15,8 @@
     "fc": "node src/cli.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "build": "tsc -p tsconfig.build.json",
-    "prepare": "tsc -p tsconfig.build.json"
+    "build": "tsc -p tsconfig.build.json && cp src/graph-view.html dist/",
+    "prepare": "tsc -p tsconfig.build.json && cp src/graph-view.html dist/"
   },
   "dependencies": {
     "@axe-core/playwright": "^4.13.0",

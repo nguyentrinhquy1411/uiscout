@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>flowcheck graph</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: screens in columns by distance from the entry, an inspector beside them. Works offline (system fonts). */
+:root {
+  --bg: #f4f7f6;
+  --surface: #ffffff;
+  --ink: #16211e;
+  --muted: #5a6763;
+  --line: #d6dfdb;
+  --accent: #0b6e5f;
+  --accent-soft: #dcefe9;
+  --edge: #9fb2ac;
+  --overlay: #6a4fb3;
+  --overlay-soft: #ece7f8;
+  --warn: #9a5b00;
+  --warn-soft: #fdf3e1;
+  --err: #b42318;
+  --err-soft: #fdecea;
+  --font-ui: "Be Vietnam Pro", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1413; --surface: #151d1b; --ink: #e3ebe8; --muted: #9caba6; --line: #27332f;
+    --accent: #4fd1b5; --accent-soft: #15302a; --edge: #4c5e59; --overlay: #b39cf2; --overlay-soft: #251d3a;
+    --warn: #f2b45a; --warn-soft: #33250f; --err: #ff8a7a; --err-soft: #3a1714; color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 14px; }
+.wrap { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; padding: 14px 16px; gap: 12px; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; }
+h1 { font-size: 19px; font-weight: 800; letter-spacing: -0.015em; margin: 0; display: flex; align-items: center; gap: 8px; }
+h1 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+.stats { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.stats b { color: var(--ink); }
+.stats .e { color: var(--err); font-weight: 600; }
+.stats .w { color: var(--warn); font-weight: 600; }
+.tools { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-left: auto; font-size: 12.5px; color: var(--muted); }
+.sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 5px; border: 1.5px solid; }
+.sw.route { background: var(--accent-soft); border-color: var(--accent); }
+.sw.ov { background: var(--overlay-soft); border-color: var(--overlay); border-style: dashed; }
+.sw.bad { background: var(--err-soft); border-color: var(--err); }
+select, input[type=search] { font: inherit; padding: 6px 10px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+input[type=search] { width: 200px; }
+select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); }
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 12px; min-height: 0; }
+.canvas { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: auto; min-width: 0; }
+svg { display: block; }
+.colhead { font: 600 11px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; fill: var(--muted); }
+.edge { fill: none; stroke: var(--edge); opacity: .55; }
+.edge.on { stroke: var(--accent); opacity: 1; }
+.edge.in { stroke: var(--overlay); opacity: .9; }
+.edge.dim { opacity: .07; }
+.node rect.box { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.4; }
+.node.ov rect.box { fill: var(--overlay-soft); stroke: var(--overlay); stroke-dasharray: 4 3; }
+.node.bad rect.box { stroke: var(--err); stroke-width: 2.2; }
+.node text { fill: var(--ink); font: 500 12px var(--font-mono); }
+.node .cnt { fill: var(--muted); font: 400 10.5px var(--font-mono); }
+.node .badge { font: 700 10px var(--font-ui); }
+.node .badge-bg.err { fill: var(--err); }
+.node .badge-bg.warn { fill: var(--warn); }
+.node .badge-tx { fill: var(--surface); }
+.node { cursor: pointer; }
+.node:focus { outline: none; }
+.node:focus-visible rect.box, .node.sel rect.box { stroke-width: 3; }
+.node.dim { opacity: .22; }
+.node.hit rect.box { stroke: var(--warn); stroke-width: 2.6; }
+.node.hidden { display: none; }
+aside { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: auto; padding: 14px 16px; min-width: 0; }
+aside h2 { font: 700 15px var(--font-mono); margin: 0 0 4px; overflow-wrap: anywhere; }
+aside .sub { color: var(--muted); font-size: 12.5px; margin-bottom: 10px; }
+aside h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 16px 0 6px; }
+.finding { border-left: 3px solid; padding: 6px 10px; margin: 6px 0; border-radius: 0 6px 6px 0; font-size: 13px; overflow-wrap: anywhere; }
+.finding.error { border-color: var(--err); background: var(--err-soft); }
+.finding.warning { border-color: var(--warn); background: var(--warn-soft); }
+.finding.info { border-color: var(--line); background: var(--bg); }
+.finding .o { font: 600 11px var(--font-mono); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); display: block; }
+.finding .at { font: 400 11px var(--font-mono); color: var(--muted); display: block; margin-top: 2px; }
+.grp { border-top: 1px solid var(--line); padding: 8px 0; }
+.to { font: 600 12.5px var(--font-mono); color: var(--accent); cursor: pointer; background: none; border: 0; padding: 0; text-align: left; overflow-wrap: anywhere; }
+.to:focus-visible { outline: 2px solid var(--accent); }
+.to.ext { color: var(--muted); cursor: default; }
+.act { display: flex; gap: 6px; align-items: baseline; font-size: 13px; margin: 3px 0 0 10px; min-width: 0; }
+.act .role { font: 400 11px var(--font-mono); color: var(--muted); flex: none; }
+.act .nm { min-width: 0; overflow-wrap: anywhere; }
+.tag { font-size: 10.5px; padding: 0 6px; border-radius: 999px; flex: none; }
+.tag.late { background: var(--warn-soft); color: var(--warn); }
+.tag.danger { background: var(--err-soft); color: var(--err); }
+.tag.ctx { background: var(--overlay-soft); color: var(--overlay); }
+.api { font: 400 11px var(--font-mono); color: var(--muted); margin-left: 10px; overflow-wrap: anywhere; }
+.path { font: 400 12px var(--font-mono); color: var(--muted); margin: 0; padding-left: 18px; }
+.path li { margin: 2px 0; overflow-wrap: anywhere; }
+.empty { color: var(--muted); font-size: 13px; }
+@media (max-width: 860px) {
+  html, body { height: auto; }
+  .wrap { height: auto; }
+  .main { grid-template-columns: minmax(0, 1fr); }
+  .canvas { height: 62vh; }
+  .tools { margin-left: 0; }
+}
+@media (prefers-reduced-motion: no-preference) { .edge, .node { transition: opacity .15s; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="dot" aria-hidden="true"></span><span id="title">flowcheck graph</span></h1>
+    <div class="stats" id="stats"></div>
+    <div class="tools">
+      <span><span class="sw route"></span>Screen</span>
+      <span><span class="sw ov"></span>Overlay</span>
+      <span><span class="sw bad"></span>Has errors</span>
+      <label><span style="position:absolute;left:-9999px">Context</span><select id="ctx" aria-label="Context"></select></label>
+      <input id="q" type="search" placeholder="Find a screen or control…" aria-label="Find a screen or control" autocomplete="off">
+    </div>
+  </header>
+  <div class="main">
+    <div class="canvas" id="canvas"></div>
+    <aside id="panel" aria-live="polite"></aside>
+  </div>
+</div>
+<script>
+const DATA = /*__FLOWCHECK_DATA__*/null
+
+const graph = DATA.graph
+const findings = DATA.findings || []
+const elements = new Map(graph.elements.map((e) => [e.id, e]))
+const byId = new Map(graph.nodes.map((n) => [n.id, n]))
+const out = new Map(graph.nodes.map((n) => [n.id, []]))
+const inn = new Map(graph.nodes.map((n) => [n.id, []]))
+for (const e of graph.edges) {
+  if (out.has(e.from)) out.get(e.from).push(e)
+  if (inn.has(e.to)) inn.get(e.to).push(e)
+}
+
+// What a control is called in the panel: its role and visible name.
+const describe = (e) => {
+  if (e.action.type === 'route') return { role: 'route', name: e.action.path }
+  const el = elements.get(e.action.element)
+  if (el) return { role: e.action.type === 'fill' ? 'type into' : el.role, name: el.name || '(no name)' }
+  const rest = e.action.element.split('.').slice(1).join('.') || e.action.element
+  return { role: e.action.type, name: rest }
+}
+
+// Findings belong to the screen they were seen on: "load X", "X → click …", with or without "[context] ".
+const nodeOfAt = (at) => {
+  const s = at.replace(/^\[[^\]]+\] /, '')
+  if (s.startsWith('load ')) return s.slice(5)
+  const arrow = s.indexOf(' → ')
+  return arrow >= 0 ? s.slice(0, arrow) : null
+}
+const findingsOf = new Map()
+for (const f of findings) {
+  const n = nodeOfAt(f.at)
+  if (n && byId.has(n)) (findingsOf.get(n) ?? findingsOf.set(n, []).get(n)).push(f)
+}
+
+// Columns: distance from the entry over edges that change screens.
+const root = graph.nodes.find((n) => n.path.length === 0)?.id ?? graph.nodes[0]?.id
+const depth = new Map([[root, 0]])
+const queue = [root]
+while (queue.length) {
+  const id = queue.shift()
+  for (const e of out.get(id) ?? []) if (e.to !== id && byId.has(e.to) && !depth.has(e.to)) { depth.set(e.to, depth.get(id) + 1); queue.push(e.to) }
+}
+const unreached = Math.max(0, ...depth.values()) + 1
+for (const n of graph.nodes) if (!depth.has(n.id)) depth.set(n.id, unreached)
+
+const isOverlay = (id) => id.includes(' [')
+const routeOf = (id) => id.split(' [')[0]
+const cols = []
+for (const n of graph.nodes) (cols[depth.get(n.id)] ??= []).push(n.id)
+for (const c of cols) c?.sort((a, b) => routeOf(a).localeCompare(routeOf(b)) || (isOverlay(a) - isOverlay(b)) || a.localeCompare(b))
+
+const COL_W = 260, NODE_W = 210, NODE_H = 40, GAP_Y = 14, TOP = 44, LEFT = 24
+const pos = new Map()
+cols.forEach((c, ci) => c?.forEach((id, ri) => pos.set(id, { x: LEFT + ci * COL_W, y: TOP + ri * (NODE_H + GAP_Y) })))
+const height = TOP + Math.max(1, ...cols.map((c) => c?.length ?? 0)) * (NODE_H + GAP_Y) + 20
+const width = LEFT + cols.length * COL_W + 40
+
+const NS = 'http://www.w3.org/2000/svg'
+const el = (tag, attrs = {}, text) => {
+  const node = document.createElementNS(NS, tag)
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v)
+  if (text !== undefined) node.textContent = text
+  return node
+}
+const svg = el('svg', { width, height, viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': 'Screens of the app and the actions between them' })
+cols.forEach((_, ci) => svg.appendChild(el('text', { x: LEFT + ci * COL_W, y: 24, class: 'colhead' }, ci === 0 ? 'Entry' : ci === unreached && depth.size && ![...depth.values()].includes(ci - 1) ? 'Not linked' : `${ci} step${ci === 1 ? '' : 's'}`)))
+
+const edgeLayer = el('g')
+svg.appendChild(edgeLayer)
+const nodeLayer = el('g')
+svg.appendChild(nodeLayer)
+let edgeEls = []
+const nodeEls = new Map()
+
+function draw(context) {
+  edgeLayer.replaceChildren()
+  nodeLayer.replaceChildren()
+  edgeEls = []
+  nodeEls.clear()
+  const inCtx = (contexts) => context === '*' || contexts.includes(context)
+  // One curve per pair of screens, however many controls lead between them.
+  const pairs = new Map()
+  for (const e of graph.edges) {
+    if (!inCtx(e.contexts) || e.from === e.to || !pos.has(e.from) || !pos.has(e.to)) continue
+    const k = `${e.from}\u0000${e.to}`
+    pairs.set(k, (pairs.get(k) ?? 0) + 1)
+  }
+  for (const [k, count] of pairs) {
+    const [from, to] = k.split('\u0000')
+    const a = pos.get(from), b = pos.get(to)
+    const forward = b.x > a.x
+    const x1 = forward ? a.x + NODE_W : a.x, y1 = a.y + NODE_H / 2
+    const x2 = forward ? b.x : b.x + NODE_W, y2 = b.y + NODE_H / 2
+    const bend = forward ? Math.max(40, (x2 - x1) / 2) : -90
+    const d = b.x === a.x
+      ? `M${a.x + NODE_W},${y1} C${a.x + NODE_W + 60},${y1} ${b.x + NODE_W + 60},${y2} ${b.x + NODE_W},${y2}`
+      : `M${x1},${y1} C${x1 + bend},${y1} ${x2 - bend},${y2} ${x2},${y2}`
+    const p = el('path', { d, class: 'edge', 'stroke-width': Math.min(1 + count * 0.25, 3) })
+    p.dataset.from = from
+    p.dataset.to = to
+    edgeLayer.appendChild(p)
+    edgeEls.push(p)
+  }
+  for (const n of graph.nodes) {
+    const p = pos.get(n.id)
+    const mine = out.get(n.id).filter((e) => inCtx(e.contexts))
+    const stay = mine.filter((e) => e.to === n.id).length
+    const errs = (findingsOf.get(n.id) ?? []).filter((f) => f.severity === 'error').length
+    const warns = (findingsOf.get(n.id) ?? []).filter((f) => f.severity === 'warning').length
+    const g = el('g', { class: `node${isOverlay(n.id) ? ' ov' : ''}${errs ? ' bad' : ''}${inCtx(n.contexts) ? '' : ' hidden'}`, transform: `translate(${p.x},${p.y})`, tabindex: '0', role: 'button', 'aria-label': `Screen ${n.id}` })
+    g.appendChild(el('rect', { class: 'box', width: NODE_W, height: NODE_H, rx: 7 }))
+    g.appendChild(el('text', { x: 10, y: 17 }, n.id.length > 25 ? `${n.id.slice(0, 24)}…` : n.id))
+    g.appendChild(el('text', { x: 10, y: 32, class: 'cnt' }, `${mine.length - stay} out · ${stay} in place`))
+    let bx = NODE_W - 8
+    for (const [count, cls] of [[warns, 'warn'], [errs, 'err']]) {
+      if (!count) continue
+      const label = String(count)
+      const w = 8 + label.length * 6
+      bx -= w
+      g.appendChild(el('rect', { class: `badge-bg ${cls}`, x: bx, y: -7, width: w, height: 14, rx: 7 }))
+      g.appendChild(el('text', { class: 'badge badge-tx', x: bx + w / 2, y: 3.5, 'text-anchor': 'middle' }, label))
+      bx -= 4
+    }
+    g.addEventListener('click', () => select(n.id))
+    g.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); select(n.id) } })
+    nodeEls.set(n.id, g)
+    nodeLayer.appendChild(g)
+  }
+}
+
+const panel = document.getElementById('panel')
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+let selected = root
+
+function select(id) {
+  selected = id
+  for (const [nid, g] of nodeEls) {
+    g.classList.toggle('sel', nid === id)
+    const linked = nid === id || out.get(id).some((e) => e.to === nid) || inn.get(id).some((e) => e.from === nid)
+    g.classList.toggle('dim', !linked)
+  }
+  for (const p of edgeEls) {
+    const on = p.dataset.from === id, inc = p.dataset.to === id
+    p.classList.toggle('on', on)
+    p.classList.toggle('in', inc && !on)
+    p.classList.toggle('dim', !on && !inc)
+  }
+  const n = byId.get(id)
+  let html = `<h2>${esc(id)}</h2><div class="sub">${isOverlay(id) ? 'Overlay' : 'Screen'} · ${depth.get(id) === unreached ? 'no link leads here' : `${depth.get(id)} step${depth.get(id) === 1 ? '' : 's'} from the entry`} · ${n.contexts.map((c) => `<span class="tag ctx">${esc(c)}</span>`).join(' ')}</div>`
+  const fs = findingsOf.get(id) ?? []
+  if (fs.length) {
+    html += `<h3>${fs.length} finding${fs.length === 1 ? '' : 's'}</h3>`
+    for (const f of fs.slice(0, 40)) html += `<div class="finding ${esc(f.severity)}"><span class="o">${esc(f.oracle)} · ${esc(f.severity)}</span>${esc(f.message)}<span class="at">${esc(f.at)}</span></div>`
+  }
+  html += `<h3>How to get here</h3>`
+  html += n.path.length ? `<ol class="path">${n.path.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>` : `<p class="empty">The entry: open the URL.</p>`
+  const groups = new Map()
+  for (const e of out.get(id)) (groups.get(e.to) ?? groups.set(e.to, []).get(e.to)).push(e)
+  const order = [...groups.keys()].sort((a, b) => (a === id) - (b === id) || a.localeCompare(b))
+  html += `<h3>${out.get(id).length} action${out.get(id).length === 1 ? '' : 's'} from here</h3>`
+  if (!order.length) html += `<p class="empty">Nothing was walked from this screen (depth or budget limit, or every control was skipped).</p>`
+  for (const to of order) {
+    const known = byId.has(to) && to !== id
+    html += `<div class="grp"><button type="button" class="to${known ? '' : ' ext'}" ${known ? `data-go="${esc(to)}"` : 'disabled'}>${to === id ? 'Stays on this screen' : `→ ${esc(to)}`}</button>`
+    for (const e of groups.get(to)) {
+      const d = describe(e)
+      html += `<div class="act"><span class="role">${esc(d.role)}</span><span class="nm">${esc(d.name)}</span>${e.delayed ? '<span class="tag late">delayed</span>' : ''}${e.safety === 'destructive' ? '<span class="tag danger">destructive</span>' : ''}</div>`
+      if (e.api.length) html += `<div class="api">${esc(e.api.join(' · '))}</div>`
+    }
+    html += `</div>`
+  }
+  const incoming = inn.get(id).filter((e) => e.from !== id)
+  html += `<h3>${incoming.length} way${incoming.length === 1 ? '' : 's'} in</h3>`
+  html += incoming.length
+    ? incoming.slice(0, 40).map((e) => `<div class="act"><span class="role">from</span><span class="nm"><button type="button" class="to" data-go="${esc(e.from)}">${esc(e.from)}</button> · ${esc(describe(e).name)}</span></div>`).join('')
+    : `<p class="empty">No edge leads here${depth.get(id) === unreached ? ': reached as a seed route' : ''}.</p>`
+  panel.innerHTML = html
+  for (const b of panel.querySelectorAll('[data-go]')) b.addEventListener('click', () => { select(b.dataset.go); nodeEls.get(b.dataset.go)?.scrollIntoView?.({ block: 'center', inline: 'center' }) })
+}
+
+const contexts = [...new Set(graph.nodes.flatMap((n) => n.contexts))].sort()
+const ctxSelect = document.getElementById('ctx')
+ctxSelect.innerHTML = `<option value="*">All contexts (${contexts.length})</option>${contexts.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}`
+ctxSelect.hidden = contexts.length < 2
+ctxSelect.addEventListener('change', () => { draw(ctxSelect.value); select(selected) })
+
+document.getElementById('q').addEventListener('input', (ev) => {
+  const q = ev.target.value.trim().toLowerCase()
+  for (const [id, g] of nodeEls) {
+    const hit = q && (id.toLowerCase().includes(q) || out.get(id).some((e) => describe(e).name.toLowerCase().includes(q)))
+    g.classList.toggle('hit', Boolean(hit))
+  }
+})
+
+const errors = new Set(findings.filter((f) => f.severity === 'error').map((f) => `${f.oracle}|${f.message}`)).size
+const warnings = new Set(findings.filter((f) => f.severity === 'warning').map((f) => `${f.oracle}|${f.message}`)).size
+const stays = graph.edges.filter((e) => e.from === e.to).length
+document.getElementById('title').textContent = `flowcheck · ${new URL(graph.entry).host}`
+document.title = `flowcheck · ${new URL(graph.entry).host}`
+document.getElementById('stats').innerHTML = `<b>${graph.nodes.length}</b> screens · <b>${graph.edges.length}</b> edges (${graph.edges.length - stays} move, ${stays} in place)`
+  + (DATA.findings ? ` · <span class="${errors ? 'e' : ''}">${errors} errors</span> · <span class="${warnings ? 'w' : ''}">${warnings} warnings</span>` : '')
+  + ` · <span title="${esc(DATA.source)}">${esc(DATA.label)}</span>`
+
+document.getElementById('canvas').appendChild(svg)
+draw('*')
+if (root) select(root)
+</script>
+</body>
+</html>

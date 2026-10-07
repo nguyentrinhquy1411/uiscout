@@ -8,7 +8,9 @@ pnpm fc check --url http://localhost:5173/ \
   --depth 2 --allow-overlap "[data-event-id]" --block "**/api/ai/**"
 ```
 
-Writes `.flowcheck/graph.json`, `findings.json` and `report.txt`; exits 1 when there are errors.
+Writes `.flowcheck/graph.json`, `findings.json`, `report.txt`, `report.md` and `graph.html`; exits 1 when there are errors.
+
+**See the graph:** `flowcheck check --open` opens `graph.html` when the run ends, and `flowcheck graph --open` opens the last run's graph (or `flowcheck graph flowcheck/app.graph.json --open` for the baseline) without running anything. Screens sit in columns by distance from the entry, overlays have a dashed border, screens with findings carry a count badge; click one to see its findings, the path that reaches it, every action from it with the API calls it made, and the ways in. A context filter appears when the graph has more than one. The page is one self-contained file and works offline.
 
 Settings can live in `flowcheck.config.json` (flags override it). Contexts are configured there only:
 

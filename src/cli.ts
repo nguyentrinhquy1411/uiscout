@@ -10,9 +10,10 @@ import { type FileConfig, loadConfig } from './config.ts'
 import { loadRecordings, type NetworkMode, saveRecordings } from './network.ts'
 import { crawl } from './crawl.ts'
 import { fuzz } from './fuzz.ts'
+import { openFile, renderGraphHtml } from './graph-view.ts'
 import { type IntentSummary, loadIntent, loadRules, summarizeIntent } from './intent.ts'
 import { renderDiff, renderMarkdown, renderText } from './report.ts'
-import type { Graph } from './types.ts'
+import type { Finding, Graph } from './types.ts'
 
 /*
  * flowcheck check --url http://localhost:5173 — the five-minute path (design doc §12):
@@ -23,6 +24,7 @@ import type { Graph } from './types.ts'
 
 const USAGE = `Usage: flowcheck check [--url <url>] [options]
        flowcheck diff <before.graph.json> <after.graph.json>
+       flowcheck graph [<graph.json>] [--open] [--out <dir>]
        flowcheck fuzz [--url <url>] [--seed <n>] [--runs <n>] [--length <n>]
        flowcheck adapters [--url <url>] [--dir <dir>] [--seed <n>] [--runs <n>] [--length <n>]
 
@@ -47,6 +49,7 @@ const USAGE = `Usage: flowcheck check [--url <url>] [options]
   --affected <ref>      Walk only the screens built from files changed since <ref> (and the
                         screens leading to them); falls back to a full run when it can't tell
   --no-rules            Skip *.rules.ts invariants and *.intent.md coverage
+  --open                Open the graph page in the browser when the run ends
   --headed              Show the browser
 
 Contexts (personas with setup steps) are configured in the settings file only.
@@ -82,6 +85,7 @@ async function main() {
       dir: { type: 'string' },
       runs: { type: 'string' },
       length: { type: 'string' },
+      open: { type: 'boolean', default: false },
       headed: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
@@ -101,6 +105,27 @@ async function main() {
   const configPath = values.config ?? (existsSync('flowcheck.config.json') ? 'flowcheck.config.json' : undefined)
   const file: FileConfig = configPath ? await loadConfig(configPath) : {}
   const url = values.url ?? file.url
+  if (positionals[0] === 'graph') {
+    // The graph page (no browser run): the last run's graph with its findings, or a baseline.
+    const candidates = positionals[1] ? [positionals[1]] : [path.join(values.out, 'graph.json'), path.join(values.baseline ?? file.baseline ?? 'flowcheck', 'app.graph.json')]
+    const source = candidates.find((f) => existsSync(f))
+    if (!source) throw new Error(`no graph found (looked for ${candidates.join(', ')}): run flowcheck check first`)
+    const findingsFile = path.join(path.dirname(source), 'findings.json')
+    const findings = existsSync(findingsFile) ? ((JSON.parse(await readFile(findingsFile, 'utf8')) as { findings: Finding[] }).findings) : null
+    const html = await renderGraphHtml({
+      graph: JSON.parse(await readFile(source, 'utf8')) as Graph,
+      findings,
+      label: findings ? 'last run' : `baseline ${path.relative(process.cwd(), source)}`,
+      source: path.resolve(source),
+    })
+    const target = path.resolve(values.out, 'graph.html')
+    await mkdir(path.dirname(target), { recursive: true })
+    await writeFile(target, html)
+    process.stdout.write(`Wrote ${path.relative(process.cwd(), target)}\n`)
+    if (values.open) openFile(target)
+    process.exit(0)
+  }
+
   if (positionals[0] === 'adapters' && url) {
     // Widget adapters (§8): seeded action sequences, invariants after every action, shrunk failures.
     const seed = num(values.seed) ?? Math.floor(Math.random() * 1e9)
@@ -249,6 +274,10 @@ async function main() {
   await writeFile(path.join(out, 'graph.json'), `${JSON.stringify(result.graph, null, 2)}\n`)
   await writeFile(path.join(out, 'findings.json'), `${JSON.stringify({ findings: result.findings, skipped: result.skipped, healed: result.healed, restless: result.restless, flaky: result.flaky }, null, 2)}\n`)
   await writeFile(path.join(out, 'report.txt'), `${text}\n`)
+  // The graph page, so every run can be looked at: flowcheck graph --open, or --open here.
+  const graphPage = path.join(out, 'graph.html')
+  await writeFile(graphPage, await renderGraphHtml({ graph: result.graph, findings: result.findings, label: 'last run', source: path.join(out, 'graph.json') }))
+  if (values.open) openFile(graphPage)
   const markdown = renderMarkdown(result, diffInfo, intent)
   await writeFile(path.join(out, 'report.md'), markdown)
   // In GitHub Actions the run summary shows the same report without any token.
