@@ -41,6 +41,23 @@ Setup steps: `goto` (full load), `route` (in-app, through the history API, so in
 
 `flowcheck diff a.json b.json` compares any two graphs. Each run also writes `report.md` for the pull request; see [docs/ci.md](docs/ci.md) and [examples/github-workflow.yml](examples/github-workflow.yml).
 
+## Identity plugin and affected runs
+
+Without changes to the app, elements are known by fingerprint. Adding the plugin to the app's test build gives every interactive JSX element two attributes:
+
+```ts
+// vite.config.ts
+import { flowcheckIds } from 'flowcheck/vite'
+export default defineConfig(({ mode }) => ({
+  plugins: [mode === 'test' && flowcheckIds(), react()],
+}))
+```
+
+- `data-fc-id="cart.CartSummary.submitOrder"`: `<module>.<Component>.<hint>`, the hint taken from the handler (`navigate('/checkout')` → `navigateCheckout`), the label or the text. Never positional; a `data-testid` wins. It becomes the element's ID in the graph, so relabelling a button doesn't change its identity.
+- `data-fc-src="src/features/cart/CartSummary.tsx:48"`: the source witness. Each screen in the baseline lists the files its controls come from.
+
+`flowcheck check --affected origin/main` then walks only the screens built from files changed since that ref, plus the screens one step before them, and judges only that part of the baseline. On the uigraph gauntlet a one-file change walked 5 of 10 screens in 25 s instead of 42 s and found the same errors. It runs everything, and says why, when a changed file isn't tied to any screen (a store, a hook, a config) or the baseline has no source witnesses.
+
 ## Network modes
 
 | `--mode` | Backend | Use |

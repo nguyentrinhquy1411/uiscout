@@ -50,6 +50,11 @@ export interface CrawlOptions extends MonitorOptions {
   headed?: boolean
   /** Nodes explored in parallel, each in its own browser context. */
   concurrency?: number
+  /**
+   * Explore only these nodes, reached by these paths (an affected-only run, §10).
+   * Keys are like snapshot keys: "[context] node", or just "node" with one context.
+   */
+  only?: Record<string, Step[]>
   log?: (line: string) => void
 }
 
@@ -72,6 +77,8 @@ export interface CrawlResult {
   flaky: string[]
   /** Structural snapshot of every node, keyed like findings: "[context] node". */
   snapshots: Snapshots
+  /** The steps that reach each node, keyed like snapshots. */
+  replays: Record<string, Step[]>
 }
 
 const VIEWPORT = { width: 1280, height: 800 }
@@ -136,6 +143,8 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
   const restless: string[] = []
   const flaky: string[] = []
   const snapshots: Snapshots = {}
+  /** How each node was reached, per context: what an affected-only run replays. */
+  const replays: Record<string, Step[]> = {}
   let steps = 0
 
   /** Records an observed edge, or adds this context to one already seen. */
@@ -245,8 +254,16 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
       return true
     }
 
+    if (options.only) {
+      // Affected-only: start at the selected nodes, by their recorded paths, and stop there.
+      for (const [key, path] of Object.entries(options.only)) {
+        const node = key.startsWith('[') ? key.slice(key.indexOf('] ') + 2) : key
+        if (tagged ? !key.startsWith(`[${ctx.name}] `) : key.startsWith('[')) continue
+        if (addNode(node, node, path, path.map((s) => stepLabel(s, 'fp' in s ? elementId('', s.fp) : '')))) queue.push({ node, depth: maxDepth })
+      }
+    }
     // The entry node, then every seed route, as starting points.
-    for (const start of [null, ...(options.seeds ?? [])]) {
+    for (const start of options.only ? [] : [null, ...(options.seeds ?? [])]) {
       const context = await newContext()
       try {
         const path: Step[] = start ? [{ kind: 'route', path: start }] : []
@@ -284,6 +301,12 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
       // Judge the screen itself once, on arrival.
       const targets = await page.evaluate(collectElements)
       snapshots[`${prefix}${node}`] = snapshotOf(targets)
+      const files = targets.flatMap((t) => (t.source ? [t.source.replace(/:\d+$/, '')] : []))
+      if (files.length) {
+        const n = nodes.get(node)!
+        n.sources = [...new Set([...(n.sources ?? []), ...files])].sort()
+      }
+      replays[`${prefix}${node}`] = path
       for (const issue of await page.evaluate(checkLayout, options.allowOverlap ?? '')) {
         const severity = issue.kind === 'covered' ? 'error' : 'warning'
         findings.push({ oracle: issue.kind === 'covered' ? 'dead-control' : 'layout', severity, at: `${prefix}load ${node}`, message: issue.detail })
@@ -446,6 +469,7 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
     restless,
     flaky,
     snapshots,
+    replays,
   }
 }
 

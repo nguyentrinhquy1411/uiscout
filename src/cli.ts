@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
+import { changedSince, type Selection, selectAffected } from './affected.ts'
 import { compareToBaseline, diffGraphs, isEmptyDiff, loadBaseline, saveBaseline } from './baseline.ts'
 import { type FileConfig, loadConfig } from './config.ts'
 import { loadRecordings, type NetworkMode, saveRecordings } from './network.ts'
@@ -38,6 +39,8 @@ const USAGE = `Usage: flowcheck check [--url <url>] [options]
                         replay (recordings only; destructive controls are walked)
   --baseline <dir>      Accepted graph and snapshots to compare against (default ./flowcheck)
   --update              Accept this run as the new baseline instead of comparing
+  --affected <ref>      Walk only the screens built from files changed since <ref> (and the
+                        screens leading to them); falls back to a full run when it can't tell
   --headed              Show the browser
 
 Contexts (personas with setup steps) are configured in the settings file only.
@@ -67,6 +70,7 @@ async function main() {
       baseline: { type: 'string' },
       mode: { type: 'string' },
       update: { type: 'boolean', default: false },
+      affected: { type: 'string' },
       headed: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
@@ -98,6 +102,19 @@ async function main() {
   if (!['live', 'record', 'replay'].includes(network)) throw new Error(`--mode must be live, record or replay, not "${network}"`)
   const recordingsFile = path.join(baselineDir, 'recordings.json')
   const recordings = network === 'replay' ? await loadRecordings(recordingsFile) : {}
+  // Affected-only (§10): needs a baseline that knows each screen's sources and paths.
+  const baseline = existsSync(baselineDir) ? await loadBaseline(baselineDir) : null
+  let selection: Selection | null = null
+  if (values.affected && !values.update) {
+    selection = baseline?.graph
+      ? selectAffected(baseline.graph, baseline.replays, changedSince(values.affected))
+      : { only: null, scope: new Set(), reason: 'full run: no baseline to select from' }
+    process.stderr.write(`  affected: ${selection.reason}\n`)
+    if (selection.only && !Object.keys(selection.only).length) {
+      process.stdout.write(`flowcheck: nothing to walk (${selection.reason})\n`)
+      process.exit(0)
+    }
+  }
   if (network === 'replay' && !Object.keys(recordings).length) process.stderr.write(`  no recordings in ${recordingsFile}: every API call will be reported\n`)
   const result = await crawl({
     url,
@@ -117,6 +134,7 @@ async function main() {
     concurrency: num(values.concurrency) ?? file.concurrency,
     network,
     recordings,
+    only: selection?.only ?? undefined,
     headed: values.headed,
     log: (line) => process.stderr.write(`  ${line}\n`),
   })
@@ -130,9 +148,10 @@ async function main() {
   const against = path.relative(process.cwd(), path.join(baselineDir, 'app.graph.json'))
   let diffInfo: Parameters<typeof renderText>[1]
   if (values.update) {
-    await saveBaseline(baselineDir, result.graph, result.snapshots)
-  } else if (existsSync(baselineDir)) {
-    const { findings, diff } = compareToBaseline(await loadBaseline(baselineDir), result.graph, result.snapshots)
+    await saveBaseline(baselineDir, result.graph, result.snapshots, result.replays)
+  } else if (baseline) {
+    const scope = selection?.only ? selection.scope : undefined
+    const { findings, diff } = compareToBaseline(baseline, result.graph, result.snapshots, scope)
     result.findings.push(...findings)
     if (diff) {
       diffInfo = { diff, against }

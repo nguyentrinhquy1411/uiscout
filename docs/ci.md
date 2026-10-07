@@ -24,3 +24,7 @@ A baseline only works when two runs of the same commit agree. In practice:
 - Block anything that costs money or varies (`"block": ["**/api/ai/**"]`).
 
 Measured: the uigraph gauntlet gave the same graph and snapshots on 3 reruns; the calendar app (227 steps, `now` fixed) on 2 reruns.
+
+## Faster pull requests
+
+With the identity plugin in the test build (see the README), add `--affected origin/${{ github.base_ref }}` to the check step and fetch the base branch (`actions/checkout` with `fetch-depth: 0`). A PR then walks only the screens its files build, plus the screens leading to them; changes to shared code, configs or files no screen names fall back to a full run. Run the full walk on merges to main so the baseline stays whole.

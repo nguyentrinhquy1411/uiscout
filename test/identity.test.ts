@@ -4,7 +4,7 @@ import type { RawElement } from '../src/types.ts'
 
 const raw = (over: Partial<RawElement> = {}): RawElement => ({
   i: 0, tag: 'button', role: 'button', name: 'Save', testId: null, parents: 'main',
-  href: null, target: null, disabled: false, submit: null, box: { x: 100, y: 100, w: 80, h: 32 }, ...over,
+  href: null, target: null, disabled: false, submit: null, source: null, box: { x: 100, y: 100, w: 80, h: 32 }, ...over,
 })
 
 describe('identity', () => {

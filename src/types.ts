@@ -20,6 +20,8 @@ export interface RawElement {
   href: string | null
   target: string | null
   disabled: boolean
+  /** Where the element is in the app's source (data-fc-src from the identity plugin): "src/x.tsx:42". */
+  source: string | null
   /** For a field: the name of the button Enter would press (its form's default submit), if any. */
   submit: string | null
   box: { x: number; y: number; w: number; h: number }
@@ -50,6 +52,11 @@ export interface GraphNode {
   path: string[]
   /** Contexts (personas) in which this node was reached. */
   contexts: string[]
+  /**
+   * Source files of the controls on this node (from the identity plugin), so a
+   * change to one of them selects this node (affected edges, §10).
+   */
+  sources?: string[]
 }
 
 export interface GraphElement {

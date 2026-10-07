@@ -123,6 +123,7 @@ export function collectElements(): RawElement[] {
       role: implicitRole(el),
       name: nameOf(el),
       testId: el.getAttribute('data-testid') ?? el.getAttribute('data-fc-id'),
+      source: el.getAttribute('data-fc-src') ?? el.closest('[data-fc-src]')?.getAttribute('data-fc-src') ?? null,
       parents: parentsOf(el),
       href: el.getAttribute('href'),
       target: el.getAttribute('target'),

@@ -3,7 +3,7 @@ import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { similarity } from './identity.ts'
 import { redactText } from './redact.ts'
-import type { Finding, Fingerprint, Graph, GraphEdge, RawElement } from './types.ts'
+import type { Finding, Fingerprint, Graph, GraphEdge, RawElement, Step } from './types.ts'
 
 /*
  * Baselines (design doc §7C and §10): what the app looked like when someone last
@@ -162,6 +162,8 @@ export function transitionFindings(diff: GraphDiff): Finding[] {
 export interface Baseline {
   graph: Graph | null
   snapshots: Snapshots
+  /** How each node was reached, keyed like snapshots: lets a run replay only some nodes. */
+  replays: Record<string, Step[]>
 }
 
 export async function loadBaseline(dir: string): Promise<Baseline> {
@@ -178,29 +180,45 @@ export async function loadBaseline(dir: string): Promise<Baseline> {
       snapshots[key] = parseSnapshot(rest.join('\n'))
     }
   }
-  return { graph, snapshots }
+  const replaysPath = path.join(dir, 'paths.json')
+  const replays = existsSync(replaysPath) ? (JSON.parse(await readFile(replaysPath, 'utf8')) as Record<string, Step[]>) : {}
+  return { graph, snapshots, replays }
 }
 
 /** Accept the current run as the baseline (`flowcheck check --update`). */
-export async function saveBaseline(dir: string, graph: Graph, snapshots: Snapshots): Promise<void> {
+export async function saveBaseline(dir: string, graph: Graph, snapshots: Snapshots, replays: Record<string, Step[]> = {}): Promise<void> {
   const snapDir = path.join(dir, 'snapshots')
   await rm(snapDir, { recursive: true, force: true })
   await mkdir(snapDir, { recursive: true })
   await writeFile(path.join(dir, 'app.graph.json'), `${JSON.stringify(graph, null, 2)}\n`)
+  const sortedReplays = Object.fromEntries(Object.entries(replays).sort(([a], [b]) => a.localeCompare(b)))
+  await writeFile(path.join(dir, 'paths.json'), `${JSON.stringify(sortedReplays, null, 2)}\n`)
   for (const [key, entries] of Object.entries(snapshots).sort(([a], [b]) => a.localeCompare(b))) {
     await writeFile(path.join(snapDir, snapshotFile(key)), `# ${key}\n${snapshotText(entries)}`)
   }
 }
 
 /** Every oracle C and transition finding of a run against its baseline. */
-export function compareToBaseline(baseline: Baseline, graph: Graph, snapshots: Snapshots): { findings: Finding[]; diff: GraphDiff | null } {
+export function compareToBaseline(
+  baseline: Pick<Baseline, 'graph' | 'snapshots'>,
+  graph: Graph,
+  snapshots: Snapshots,
+  /** For an affected-only run: the nodes explored. The rest of the baseline isn't judged. */
+  scope?: Set<string>,
+): { findings: Finding[]; diff: GraphDiff | null } {
   const findings: Finding[] = []
   for (const [key, entries] of Object.entries(snapshots)) {
     const before = baseline.snapshots[key]
     if (before) findings.push(...diffSnapshot(key, before, entries))
   }
   if (!baseline.graph) return { findings, diff: null }
-  const diff = diffGraphs(baseline.graph, graph)
+  let before = baseline.graph
+  if (scope) {
+    // Only what was walked: the scoped nodes and the edges leaving them. Their
+    // destinations weren't explored, so their absence from the run means nothing.
+    before = { ...before, edges: before.edges.filter((e) => scope.has(e.from)), nodes: before.nodes.filter((n) => scope.has(n.id)) }
+  }
+  const diff = diffGraphs(before, graph)
   findings.push(...transitionFindings(diff))
   return { findings, diff }
 }
