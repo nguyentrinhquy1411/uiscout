@@ -27,7 +27,7 @@ claude mcp add uiscout -- node ~/dev/uiscout/src/cli.ts mcp --dir ~/dev/my-app
 }
 ```
 
-The server reads files on every call, so a new `uiscout check` is picked up without restarting it. Run at least one `uiscout check` (or `check --update`) first; tools that need the app's URL take it from `uiscout.config.json`.
+The server reads files on every call, so a new `uiscout check` is picked up without restarting it. Run at least one `uiscout check` (or `check --update`) first. Tools that open a browser go only to the `url` in `uiscout.config.json`; an agent can't choose the URL.
 
 ## Tools
 
@@ -75,7 +75,7 @@ Proposals live in `uiscout/proposals.json`, next to the baseline. Verified edges
 
 ## Safety
 
-- `run_edge` and `verify_proposal` click in a real browser, against the app at the configured URL, with the same safety rules as `check`: destructive controls are skipped in live mode, `block` applies, and replay mode serves recorded responses only.
+- `run_edge` and `verify_proposal` click in a real browser, only against the app at the `url` in `uiscout.config.json` (never a URL from the agent: context setup steps type credentials into the page), with the same safety rules as `check`: destructive controls are skipped in live mode, `block` applies, and replay mode serves recorded responses only.
 - The server never edits the app's code, its rules, or the baseline graph.
 - Review `uiscout/proposals.json` like any other file before committing it.
 

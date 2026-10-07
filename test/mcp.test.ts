@@ -96,6 +96,14 @@ describe('MCP server', () => {
     expect(zoo.hits).not.toContain('POST /api/delete')
   }, 60_000)
 
+  it('only ever walks the configured app: an agent cannot choose the URL', async () => {
+    const run = (await client.listTools()).tools.find((t) => t.name === 'run_edge')!
+    expect(Object.keys(run.inputSchema.properties ?? {})).toEqual(['from', 'element'])
+    // Extra arguments are not honoured: the walk still goes to the zoo from the config.
+    const res = (await call('run_edge', { from: '/', element: 'Clean page', url: 'http://169.254.169.254/' })).json()
+    expect(res.observed.map((o: { to: string }) => o.to)).toEqual(['/clean.html'])
+  }, 60_000)
+
   it('answers clearly when there is nothing to read', async () => {
     const empty = await mkdtemp(path.join(tmpdir(), 'uiscout-empty-'))
     const [c, s] = InMemoryTransport.createLinkedPair()

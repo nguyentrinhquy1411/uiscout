@@ -117,10 +117,15 @@ async function saveProposals(ws: Workspace, proposals: Proposal[]): Promise<void
  * Walks one control on one screen in a real browser: replays the baseline's path
  * to the screen, acts on the matching control only, and reports where it led.
  * The control is matched by element ID, test ID or exact visible name.
+ *
+ * The URL comes only from uiscout.config.json, never from the agent: a context's
+ * setup steps type its credentials into the page, so an agent-chosen URL (say, a
+ * prompt-injected one) would send them to another site, or point the browser at
+ * internal hosts.
  */
-export async function walkEdge(ws: Workspace, from: string, element: string, url?: string) {
-  const entry = url ?? ws.config.url
-  if (!entry) throw new Error('no app URL: pass url, or set "url" in uiscout.config.json')
+export async function walkEdge(ws: Workspace, from: string, element: string) {
+  const entry = ws.config.url
+  if (!entry) throw new Error('no app URL: set "url" in uiscout.config.json (the MCP server only walks the configured app)')
   const replays = (await loadBaseline(ws.baselineDir)).replays
   const keys = Object.keys(replays).filter((k) => (k.startsWith('[') ? k.slice(k.indexOf('] ') + 2) : k) === from)
   if (!keys.length) throw new Error(`no recorded path to ${from} in ${path.relative(ws.root, ws.baselineDir)}/paths.json: run uiscout check --update first`)
@@ -305,11 +310,11 @@ export function createServer(root: string): McpServer {
 
   server.registerTool('run_edge', {
     title: 'Walk one control',
-    description: 'Replay the path to a screen in a real browser, act on one control, and report where it led, the API calls it made and any findings. Destructive controls are skipped unless the project runs in replay mode.',
-    inputSchema: { from: z.string(), element: z.string(), url: z.url().optional().describe('App URL; defaults to "url" in uiscout.config.json') },
-  }, async ({ from, element, url }) => {
+    description: 'Replay the path to a screen in a real browser (the app at the URL in uiscout.config.json), act on one control, and report where it led, the API calls it made and any findings. Destructive controls are skipped unless the project runs in replay mode.',
+    inputSchema: { from: z.string(), element: z.string() },
+  }, async ({ from, element }) => {
     try {
-      return text(await walkEdge(await workspace(root), from, element, url))
+      return text(await walkEdge(await workspace(root), from, element))
     } catch (err) {
       return fail((err as Error).message)
     }
@@ -318,15 +323,15 @@ export function createServer(root: string): McpServer {
   server.registerTool('verify_proposal', {
     title: 'Verify an edge proposal',
     description: 'Walk a proposed edge in a real browser. It becomes "verified" only if the runner observes the transition (to expectTo, when given); otherwise "refuted", with the evidence.',
-    inputSchema: { id: z.string(), url: z.url().optional() },
-  }, async ({ id, url }) => {
+    inputSchema: { id: z.string() },
+  }, async ({ id }) => {
     const ws = await workspace(root)
     const proposals = await loadProposals(ws)
     const p = proposals.find((x) => x.id === id)
     if (!p) return fail(`No proposal ${id}.`)
     if (p.kind !== 'edge') return fail('Rule proposals are accepted by a developer in a pull request, not by the runner.')
     try {
-      const walked = await walkEdge(ws, p.from!, p.element!, url)
+      const walked = await walkEdge(ws, p.from!, p.element!)
       const moved = walked.observed.filter((o) => o.to !== p.from)
       const ok = p.expectTo ? walked.observed.some((o) => o.to === p.expectTo) : moved.length > 0
       p.status = ok ? 'verified' : 'refuted'
