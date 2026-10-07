@@ -117,6 +117,10 @@ export default {
 claude mcp add uiscout -- pnpm exec uiscout mcp
 ```
 
+## Production usage overlay (M6)
+
+`uiscout/track` counts, in production, which controls real users act on (by `data-scout-id` or `data-testid`, per route; no text, values or user identifiers) and hands batches to your own endpoint or analytics. `uiscout usage import` aggregates them into `uiscout/usage.json`; from then on every run reports usage-weighted coverage, the controls people use that tests don't reach (ranked by traffic, with the reason), and walked controls nobody uses. The graph page tags actions with their real uses, and the MCP server's `get_uncovered` ranks by traffic. See [docs/guide/15-usage.md](docs/guide/15-usage.md).
+
 ## Network modes
 
 | `--mode` | Backend | Use |

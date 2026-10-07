@@ -14,6 +14,11 @@ export async function startZoo(): Promise<{ url: string; hits: string[]; overrid
     if (url.pathname === '/api/ok') return json(res, 200, { message: 'fine' })
     if (url.pathname === '/api/report') return json(res, 500, { error: 'boom' })
     if (url.pathname === '/api/delete') return json(res, 200, { deleted: true })
+    // The usage tracker, served from source so the shop page can import it.
+    if (url.pathname === '/uiscout-track.js') {
+      const js = await readFile(path.join(import.meta.dirname, '..', 'src', 'track.js'))
+      return void res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' }).end(js)
+    }
     const override = overrides.get(url.pathname)
     if (override) return void res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(override)
     const file = url.pathname === '/' ? 'index.html' : url.pathname.slice(1)

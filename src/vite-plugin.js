@@ -25,7 +25,9 @@ const INTERACTIVE_TAGS = new Set(['a', 'button', 'input', 'select', 'textarea', 
 const HANDLERS = /^on(Click|DoubleClick|KeyDown|KeyUp|Submit|Change|Input|PointerDown|MouseDown)$/
 
 /**
- * @param {{ include?: RegExp, root?: string }} [options]
+ * @param {{ include?: RegExp, root?: string, sources?: boolean }} [options]  sources: false keeps
+ *   data-scout-id but drops data-scout-src, for production builds that feed usage
+ *   tracking (no file paths in shipped HTML)
  * @returns {import('vite').Plugin}
  */
 export function uiscoutIds(options = {}) {
@@ -40,7 +42,7 @@ export function uiscoutIds(options = {}) {
     transform(code, id) {
       const file = id.split('?')[0]
       if (!include.test(file) || !code.includes('<')) return null
-      return stampIds(code, path.relative(root, file).split(path.sep).join('/'), file)
+      return stampIds(code, path.relative(root, file).split(path.sep).join('/'), file, { sources: options.sources ?? true })
     },
   }
 }
@@ -52,7 +54,7 @@ export function uiscoutIds(options = {}) {
  * @param {string} [file]    absolute path, for the source map
  * @returns {{ code: string, map: import('magic-string').SourceMap } | null}
  */
-export function stampIds(code, relPath, file = relPath) {
+export function stampIds(code, relPath, file = relPath, { sources = true } = {}) {
   const { program, errors } = parseSync(relPath, code)
   if (errors.length) return null
   const lineStarts = [0]
@@ -76,7 +78,7 @@ export function stampIds(code, relPath, file = relPath) {
     if (!node || typeof node.type !== 'string') return
     const name = componentName(node) ?? component
     if (node.type === 'JSXElement') {
-      const stamp = stampFor(node, name, module, relPath, lineOf)
+      const stamp = stampFor(node, name, module, relPath, lineOf, sources)
       if (stamp) {
         s.appendLeft(node.openingElement.name.end, stamp)
         changed = true
@@ -111,7 +113,7 @@ function componentName(node) {
   return null
 }
 
-function stampFor(node, component, module, relPath, lineOf) {
+function stampFor(node, component, module, relPath, lineOf, sources) {
   const opening = node.openingElement
   const tag = opening.name.type === 'JSXIdentifier' ? opening.name.name : opening.name.type === 'JSXMemberExpression' ? opening.name.property.name : null
   if (!tag) return null
@@ -125,7 +127,7 @@ function stampFor(node, component, module, relPath, lineOf) {
     : Boolean(handler) || has('href') || has('to') || /Button|Link|Trigger|Item|Tab|Checkbox|Switch|Toggle/.test(tag)
   if (!interactive) return null
 
-  let stamp = ` data-scout-src="${relPath}:${lineOf(opening.start)}"`
+  let stamp = sources ? ` data-scout-src="${relPath}:${lineOf(opening.start)}"` : ''
   if (!has('data-testid') && !has('data-scout-id')) {
     const hint = hintOf(handler, attrs, node)
     if (hint && component) stamp += ` data-scout-id="${module}.${component}.${hint}"`

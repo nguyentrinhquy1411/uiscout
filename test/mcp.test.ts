@@ -65,7 +65,8 @@ describe('MCP server', () => {
     expect(errors.some((f: { message: string }) => f.message.includes('kaboom'))).toBe(true)
 
     const uncovered = (await call('get_uncovered')).json()
-    expect(uncovered.destructive.length).toBeGreaterThan(0)
+    expect(uncovered.skippedByReason.destructive.length).toBeGreaterThan(0)
+    expect(uncovered.untestedByTraffic).toBeUndefined()
   })
 
   it('verifies a true edge proposal and refutes a false one, in a real browser', async () => {
@@ -103,6 +104,15 @@ describe('MCP server', () => {
     const res = (await call('run_edge', { from: '/', element: 'Clean page', url: 'http://169.254.169.254/' })).json()
     expect(res.observed.map((o: { to: string }) => o.to)).toEqual(['/clean.html'])
   }, 60_000)
+
+  it('ranks what tests miss by real traffic once usage is imported', async () => {
+    const { emptyUsage, mergeUsage, parseUsage, saveUsage } = await import('../src/usage.ts')
+    const usage = mergeUsage(emptyUsage(), parseUsage(JSON.stringify([{ route: '/broken.html', id: '/broken.html.button:delete-account@main', count: 30 }])), 'x.json')
+    await saveUsage(path.join(root, 'uiscout', 'usage.json'), usage)
+    const uncovered = (await call('get_uncovered')).json()
+    expect(uncovered.untestedByTraffic[0]).toMatchObject({ id: '/broken.html.button:delete-account@main', count: 30 })
+    expect(uncovered.untestedByTraffic[0].reason).toContain('replay')
+  })
 
   it('answers clearly when there is nothing to read', async () => {
     const empty = await mkdtemp(path.join(tmpdir(), 'uiscout-empty-'))

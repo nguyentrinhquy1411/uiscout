@@ -7,6 +7,8 @@ uiscout diff     <before.graph.json> <after.graph.json>
 uiscout fuzz     [--url <url>] [--seed <n>] [--runs <n>] [--length <n>]
 uiscout adapters [--url <url>] [--dir <dir>] [--seed <n>] [--runs <n>] [--length <n>]
 uiscout mcp      [--dir <project>]
+uiscout usage    import <file>... [--reset]
+uiscout usage    report [<graph.json>]
 uiscout --help
 ```
 
@@ -86,6 +88,15 @@ Writes `fuzz.json` to `--out`.
 
 Starts the MCP server on stdio for the project in `--dir` (default: the current directory). Runs until the client disconnects; logs go to stderr. See [MCP server](12-mcp.md).
 
+## `uiscout usage`
+
+| Command | Does |
+| --- | --- |
+| `usage import <file>... [--reset]` | Adds tracker batches, JSON events or CSV to `uiscout/usage.json` (`--reset` starts over) |
+| `usage report [<graph.json>]` | Prints usage-weighted coverage, untested controls by traffic and unused ones, against the last run's graph or the given one |
+
+See [Production usage overlay](15-usage.md).
+
 ## Exit codes
 
 | Code | `check` | `diff` | `fuzz` / `adapters` | `graph` |
@@ -100,4 +111,5 @@ Starts the MCP server on stdio for the project in `--dir` (default: the current 
 | --- | --- |
 | `uiscout/rules` | `always`, `when`, `eventually`, `state` in `*.rules.ts` |
 | `uiscout/adapter` | The `WidgetAdapter` type for `*.adapter.ts` |
-| `uiscout/vite` | The `uiscoutIds()` plugin |
+| `uiscout/vite` | The `uiscoutIds()` plugin (`{ sources: false }` for production) |
+| `uiscout/track` | `trackUsage()` for production usage counts |

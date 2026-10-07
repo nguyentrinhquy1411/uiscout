@@ -5,9 +5,14 @@ export interface UiscoutIdsOptions {
   include?: RegExp
   /** Paths in data-scout-src are relative to this (default: the Vite root). */
   root?: string
+  /**
+   * Stamp data-scout-src (default true). Set false for production builds that ship
+   * data-scout-id for usage tracking: no source paths in the HTML.
+   */
+  sources?: boolean
 }
 
-/** Vite plugin: stamps interactive JSX with data-scout-src and data-scout-id. Use in test builds. */
+/** Vite plugin: stamps interactive JSX with data-scout-src and data-scout-id. */
 export function uiscoutIds(options?: UiscoutIdsOptions): {
   name: string
   enforce: 'pre'
@@ -15,4 +20,4 @@ export function uiscoutIds(options?: UiscoutIdsOptions): {
   transform(code: string, id: string): { code: string; map: SourceMap } | null
 }
 
-export function stampIds(code: string, relPath: string, file?: string): { code: string; map: SourceMap } | null
+export function stampIds(code: string, relPath: string, file?: string, options?: { sources?: boolean }): { code: string; map: SourceMap } | null

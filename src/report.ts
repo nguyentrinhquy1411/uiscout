@@ -1,6 +1,7 @@
 import type { GraphDiff } from './baseline.ts'
 import type { CrawlResult } from './crawl.ts'
 import type { IntentSummary } from './intent.ts'
+import type { UsageAnalysis } from './usage.ts'
 import type { Finding } from './types.ts'
 
 /*
@@ -42,7 +43,7 @@ export function renderIntent(summary: IntentSummary): string[] {
   return [...lines, '']
 }
 
-export function renderText(result: CrawlResult, diff?: { diff: GraphDiff; against: string }, intent?: IntentSummary): string {
+export function renderText(result: CrawlResult, diff?: { diff: GraphDiff; against: string }, intent?: IntentSummary, usage?: { analysis: UsageAnalysis; against: string }): string {
   const errors = result.findings.filter((f) => f.severity === 'error')
   const warnings = result.findings.filter((f) => f.severity === 'warning')
   const { nodes, edges } = result.graph
@@ -55,6 +56,7 @@ export function renderText(result: CrawlResult, diff?: { diff: GraphDiff; agains
   section(lines, 'Warnings', warnings)
   section(lines, 'Changes', result.findings.filter((f) => f.severity === 'info'))
   if (intent) lines.push(...renderIntent(intent))
+  if (usage) lines.push(...renderUsage(usage.analysis, usage.against))
 
   if (result.healed.length) {
     lines.push(`Healed lookups (${result.healed.length}): found by similarity, not exact match`)
@@ -112,7 +114,7 @@ const MAX_MD_ITEMS = 10
  * The pull request comment (§10): a verdict line, the graph diff and the errors up
  * front, the full text report folded underneath. Short and true.
  */
-export function renderMarkdown(result: CrawlResult, diff?: { diff: GraphDiff; against: string }, intent?: IntentSummary): string {
+export function renderMarkdown(result: CrawlResult, diff?: { diff: GraphDiff; against: string }, intent?: IntentSummary, usage?: { analysis: UsageAnalysis; against: string }): string {
   const errors = result.findings.filter((f) => f.severity === 'error')
   const warnings = result.findings.filter((f) => f.severity === 'warning')
   const e = distinct(errors)
@@ -141,8 +143,42 @@ export function renderMarkdown(result: CrawlResult, diff?: { diff: GraphDiff; ag
     md.push('')
   }
   if (intent?.total) md.push(`**Intent coverage** ${intent.linked} of ${intent.total} lines backed by a passing rule.`, '')
-  md.push('<details><summary>Full report</summary>', '', '```text', renderText(result, diff, intent), '```', '', '</details>')
+  if (usage) md.push(...renderUsageMarkdown(usage.analysis))
+  md.push('<details><summary>Full report</summary>', '', '```text', renderText(result, diff, intent, usage), '```', '', '</details>')
   return `${md.join('\n')}\n`
 }
 
 const escapeMd = (s: string) => s.replace(/([<>*_`|])/g, '\\$1')
+
+const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : 'n/a')
+const MAX_USAGE_ROWS = 15
+
+/**
+ * The usage overlay (§10 "After deploy"): coverage weighed by real traffic, the
+ * most used controls tests don't reach, and walked controls nobody uses.
+ */
+export function renderUsage(u: UsageAnalysis, against: string): string[] {
+  const lines = [`Usage (${against}: ${u.totalActions.toLocaleString('en-US')} actions on tracked controls)`]
+  lines.push(`  Usage-weighted coverage ${pct(u.walkedActions, u.totalActions)} (${u.walkedActions.toLocaleString('en-US')} of ${u.totalActions.toLocaleString('en-US')} actions are on controls the run walked)`)
+  if (u.untested.length) {
+    lines.push('  Untested, by traffic')
+    const width = String(u.untested[0].count.toLocaleString('en-US')).length
+    for (const t of u.untested.slice(0, MAX_USAGE_ROWS)) lines.push(`    ${t.count.toLocaleString('en-US').padStart(width)}  ${t.route}  ${t.id}  — ${t.reason}`)
+    if (u.untested.length > MAX_USAGE_ROWS) lines.push(`    … ${u.untested.length - MAX_USAGE_ROWS} more`)
+  }
+  if (u.unused.length) {
+    lines.push('  Unused (no use in the period, on screens people visit)')
+    for (const x of u.unused.slice(0, MAX_USAGE_ROWS)) lines.push(`    ${x.route}  ${x.id}  (${x.views.toLocaleString('en-US')} views)`)
+    if (u.unused.length > MAX_USAGE_ROWS) lines.push(`    … ${u.unused.length - MAX_USAGE_ROWS} more`)
+  }
+  return [...lines, '']
+}
+
+export function renderUsageMarkdown(u: UsageAnalysis): string[] {
+  const md = [`**Usage-weighted coverage** ${pct(u.walkedActions, u.totalActions)} of ${u.totalActions.toLocaleString('en-US')} real actions.`]
+  if (u.untested.length) {
+    md.push('', '| Uses | Screen | Control not walked | Why |', '| ---: | --- | --- | --- |')
+    for (const t of u.untested.slice(0, 5)) md.push(`| ${t.count.toLocaleString('en-US')} | \`${t.route}\` | \`${t.id}\` | ${t.reason} |`)
+  }
+  return [...md, '']
+}

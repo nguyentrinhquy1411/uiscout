@@ -25,6 +25,8 @@ export interface GraphViewData {
   snapshots?: Record<string, SnapshotEntry[]>
   /** Screenshot per screen, as a path relative to the page. */
   screens?: Record<string, string>
+  /** Real uses per walked control, "route|elementId" → count (the usage overlay). */
+  usage?: Record<string, number>
 }
 
 export async function renderGraphHtml(data: GraphViewData): Promise<string> {

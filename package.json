@@ -43,11 +43,17 @@
     "./adapter": {
       "types": "./dist/adapter.d.ts",
       "default": "./dist/adapter.js"
+    },
+    "./track": {
+      "types": "./src/track.d.ts",
+      "default": "./src/track.js"
     }
   },
   "files": [
     "dist",
     "src/vite-plugin.js",
-    "src/vite-plugin.d.ts"
+    "src/vite-plugin.d.ts",
+    "src/track.js",
+    "src/track.d.ts"
   ]
 }

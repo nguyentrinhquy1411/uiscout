@@ -20,6 +20,7 @@ The guide follows the order you'll use it in: install, first run, reading the re
 | 12 | [MCP server for coding agents](12-mcp.md) | You want Claude Code, Cursor or Copilot to read the graph and propose tests |
 | 13 | [Safety and sensitive data](13-safety.md) | Before running against an app with real data |
 | 14 | [Troubleshooting](14-troubleshooting.md) | Results look wrong, noisy, or a command fails |
+| 15 | [Production usage overlay](15-usage.md) | You want to rank untested controls by real traffic |
 | — | [CLI reference](cli-reference.md) | You need every command and flag |
 
 ## The first five minutes

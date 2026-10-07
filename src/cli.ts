@@ -11,9 +11,10 @@ import { loadRecordings, type NetworkMode, saveRecordings } from './network.ts'
 import { crawl } from './crawl.ts'
 import { fuzz } from './fuzz.ts'
 import { startMcp } from './mcp.ts'
+import { analyzeUsage, emptyUsage, loadUsage, mergeUsage, parseUsage, saveUsage, type UsageAnalysis } from './usage.ts'
 import { openFile, renderGraphHtml } from './graph-view.ts'
 import { type IntentSummary, loadIntent, loadRules, summarizeIntent } from './intent.ts'
-import { renderDiff, renderMarkdown, renderText } from './report.ts'
+import { renderDiff, renderMarkdown, renderText, renderUsage } from './report.ts'
 import type { Finding, Graph } from './types.ts'
 
 /*
@@ -28,6 +29,8 @@ const USAGE = `Usage: uiscout check [--url <url>] [options]
        uiscout graph [<graph.json>] [--open] [--out <dir>]
        uiscout fuzz [--url <url>] [--seed <n>] [--runs <n>] [--length <n>]
        uiscout mcp [--dir <project>]
+       uiscout usage import <file>... [--reset]
+       uiscout usage report [<graph.json>]
        uiscout adapters [--url <url>] [--dir <dir>] [--seed <n>] [--runs <n>] [--length <n>]
 
   --config <file>       Settings file (default ./uiscout.config.json when it exists)
@@ -85,6 +88,7 @@ async function main() {
       baseline: { type: 'string' },
       mode: { type: 'string' },
       update: { type: 'boolean', default: false },
+      reset: { type: 'boolean', default: false },
       affected: { type: 'string' },
       seed: { type: 'string' },
       dir: { type: 'string' },
@@ -112,6 +116,39 @@ async function main() {
   const configPath = values.config ?? (existsSync('uiscout.config.json') ? 'uiscout.config.json' : undefined)
   const file: FileConfig = configPath ? await loadConfig(configPath) : {}
   const url = values.url ?? file.url
+  if (positionals[0] === 'usage') {
+    // The usage overlay (§10 "After deploy"): import counts from uiscout/track or an export, then rank.
+    const baselineDir = path.resolve(values.baseline ?? file.baseline ?? 'uiscout')
+    const usageFile = path.join(baselineDir, 'usage.json')
+    if (positionals[1] === 'import') {
+      const inputs = positionals.slice(2)
+      if (!inputs.length) throw new Error('usage import needs at least one file (JSON, NDJSON or CSV)')
+      let usage = values.reset ? emptyUsage() : ((await loadUsage(usageFile)) ?? emptyUsage())
+      for (const input of inputs) {
+        const events = parseUsage(await readFile(input, 'utf8'))
+        usage = mergeUsage(usage, events, path.basename(input))
+        process.stdout.write(`  ${path.basename(input)}: ${events.length} events\n`)
+      }
+      await mkdir(baselineDir, { recursive: true })
+      await saveUsage(usageFile, usage)
+      const actions = usage.controls.reduce((n, c) => n + c.count, 0)
+      process.stdout.write(`Wrote ${path.relative(process.cwd(), usageFile)}: ${usage.controls.length} controls, ${actions} actions, ${Object.keys(usage.views).length} routes\n`)
+      process.exit(0)
+    }
+    if (positionals[1] === 'report') {
+      const usage = await loadUsage(usageFile)
+      if (!usage) throw new Error(`no ${path.relative(process.cwd(), usageFile)}: run uiscout usage import first`)
+      const graphFile = positionals[2] ?? [path.join(values.out, 'graph.json'), path.join(baselineDir, 'app.graph.json')].find((f) => existsSync(f))
+      if (!graphFile || !existsSync(graphFile)) throw new Error('no graph: run uiscout check first')
+      const findingsFile = path.join(path.dirname(graphFile), 'findings.json')
+      const skipped = existsSync(findingsFile) ? ((JSON.parse(await readFile(findingsFile, 'utf8')) as { skipped?: [] }).skipped ?? []) : []
+      const analysis = analyzeUsage(JSON.parse(await readFile(graphFile, 'utf8')) as Graph, usage, skipped)
+      process.stdout.write(`${renderUsage(analysis, path.relative(process.cwd(), usageFile)).join('\n')}\n`)
+      process.exit(0)
+    }
+    throw new Error('usage: uiscout usage import <file>... | uiscout usage report [<graph.json>]')
+  }
+
   if (positionals[0] === 'mcp') {
     // The MCP server for coding agents (§11): stdio, no model, runs until the client disconnects.
     await startMcp(path.resolve(values.dir ?? '.'))
@@ -288,6 +325,11 @@ async function main() {
     }
   }
 
+  // The usage overlay, when real usage has been imported (§10 "After deploy").
+  const usageData = await loadUsage(path.join(baselineDir, 'usage.json'))
+  let usageInfo: { analysis: UsageAnalysis; against: string } | undefined
+  if (usageData) usageInfo = { analysis: analyzeUsage(result.graph, usageData, result.skipped), against: path.relative(process.cwd(), path.join(baselineDir, 'usage.json')) }
+
   let intent: IntentSummary | undefined
   if (intentLines.length) {
     intent = summarizeIntent(intentLines, result.ruleResults)
@@ -298,7 +340,7 @@ async function main() {
 
   const out = path.resolve(values.out)
   await mkdir(out, { recursive: true })
-  const text = renderText(result, diffInfo, intent)
+  const text = renderText(result, diffInfo, intent, usageInfo)
   await writeFile(path.join(out, 'graph.json'), `${JSON.stringify(result.graph, null, 2)}\n`)
   await writeFile(path.join(out, 'findings.json'), `${JSON.stringify({ findings: result.findings, skipped: result.skipped, healed: result.healed, restless: result.restless, flaky: result.flaky, ruleResults: result.ruleResults }, null, 2)}\n`)
   await writeFile(path.join(out, 'report.txt'), `${text}\n`)
@@ -314,9 +356,9 @@ async function main() {
     screens[key] = `screens/${name}`
   }
   const graphPage = path.join(out, 'graph.html')
-  await writeFile(graphPage, await renderGraphHtml({ graph: result.graph, findings: result.findings, label: 'last run', source: path.join(out, 'graph.json'), snapshots: result.snapshots, screens }))
+  await writeFile(graphPage, await renderGraphHtml({ graph: result.graph, findings: result.findings, label: 'last run', source: path.join(out, 'graph.json'), snapshots: result.snapshots, screens, usage: usageInfo?.analysis.perControl }))
   if (values.open) openFile(graphPage)
-  const markdown = renderMarkdown(result, diffInfo, intent)
+  const markdown = renderMarkdown(result, diffInfo, intent, usageInfo)
   await writeFile(path.join(out, 'report.md'), markdown)
   // In GitHub Actions the run summary shows the same report without any token.
   if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, markdown)

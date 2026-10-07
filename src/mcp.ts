@@ -11,6 +11,7 @@ import { crawl, type Skip } from './crawl.ts'
 import { loadIntent, summarizeIntent } from './intent.ts'
 import { loadRecordings, type NetworkMode } from './network.ts'
 import type { Finding, Graph, GraphEdge, Step } from './types.ts'
+import { analyzeUsage, loadUsage } from './usage.ts'
 
 /*
  * The MCP server (design doc §11): no model, no API key. A coding agent (Claude
@@ -240,7 +241,7 @@ export function createServer(root: string): McpServer {
 
   server.registerTool('get_uncovered', {
     title: 'What the last run did not walk',
-    description: 'Controls the runner saw but did not act on, grouped by reason (destructive, input, disabled, budget, not-found, new-tab, external, repeat). Candidates for proposals, replay mode, or more budget.',
+    description: 'Controls the runner saw but did not act on, grouped by reason (destructive, input, disabled, budget, not-found, new-tab, external, repeat). When real usage has been imported (uiscout usage import), also the used controls tests do not reach, ranked by traffic, and walked controls nobody uses. Candidates for proposals, replay mode, or more budget.',
     inputSchema: {},
   }, async () => {
     const ws = await workspace(root)
@@ -248,7 +249,16 @@ export function createServer(root: string): McpServer {
     if (!run) return fail('No run yet: run `uiscout check` first.')
     const byReason: Record<string, Array<{ screen: string; element: string }>> = {}
     for (const s of run.skipped) (byReason[s.reason] ??= []).push({ screen: s.node, element: s.element })
-    return text(byReason)
+    const usage = await loadUsage(path.join(ws.baselineDir, 'usage.json'))
+    const loaded = usage ? await loadGraph(ws) : null
+    if (!usage || !loaded) return text({ skippedByReason: byReason })
+    const u = analyzeUsage(loaded.graph, usage, run.skipped)
+    return text({
+      usageWeightedCoverage: u.totalActions ? u.walkedActions / u.totalActions : null,
+      untestedByTraffic: u.untested.slice(0, 50),
+      unused: u.unused.slice(0, 50),
+      skippedByReason: byReason,
+    })
   })
 
   server.registerTool('get_intent', {

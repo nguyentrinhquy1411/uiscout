@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Shop</title></head>
+<body>
+  <main>
+    <h1>Shop</h1>
+    <button type="button" data-scout-id="shop.Shop.addToBasket">Add to basket</button>
+    <button type="button" data-scout-id="shop.Shop.compare">Compare</button>
+    <button type="button" data-scout-id="shop.Shop.deleteBasket">Delete basket</button>
+    <input data-testid="shop.search" aria-label="Search products">
+    <a href="/items/12345" data-scout-id="shop.Shop.openItem" id="item">Open item</a>
+    <p id="msg"></p>
+  </main>
+  <script type="module">
+    import { trackUsage } from '/uiscout-track.js'
+    window.batches = []
+    window.stopTracking = trackUsage({ send: (b) => window.batches.push(b), flushMs: 100000 })
+    // A single-page link: the route changes without a load.
+    document.getElementById('item').onclick = (e) => { e.preventDefault(); history.pushState({}, '', '/items/12345') }
+  </script>
+</body></html>
