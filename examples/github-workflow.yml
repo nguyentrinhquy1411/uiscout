@@ -38,4 +38,7 @@ jobs:
         if: always()
         with:
           name: flowcheck
-          path: .flowcheck/
+          # Screenshots stay out (they show whatever the app shows); CI doesn't take them by default anyway.
+          path: |
+            .flowcheck/
+            !.flowcheck/screens/

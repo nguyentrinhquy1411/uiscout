@@ -285,7 +285,9 @@ function draw(context) {
 }
 
 const panel = document.getElementById('panel')
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
+// Numbers from the data file go into attributes: coerce, never trust them to be numbers.
+const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0)
 let selected = root
 
 function select(id) {
@@ -348,7 +350,12 @@ function snapshotHtml(id) {
   const entries = all[key]
   const shot = DATA.screens?.[key]
   const mode = shot ? shotMode : 'wire'
-  const boxes = entries.map((e) => `<rect class="wf ${ROLE_CLASS[e.role] ?? (e.role === 'tab' || e.role.startsWith('menuitem') || e.role === 'option' ? '' : 'other')}" x="${e.x}" y="${e.y}" width="${Math.max(e.w, 2)}" height="${Math.max(e.h, 2)}" rx="3"><title>${esc(e.role)} "${esc(e.name)}"</title></rect>`).join('')
+  const roleClass = (role) => {
+    const r = String(role)
+    if (Object.hasOwn(ROLE_CLASS, r)) return ROLE_CLASS[r]
+    return r === 'tab' || r.startsWith('menuitem') || r === 'option' ? '' : 'other'
+  }
+  const boxes = entries.map((e) => `<rect class="wf ${roleClass(e.role)}" x="${num(e.x)}" y="${num(e.y)}" width="${Math.max(num(e.w), 2)}" height="${Math.max(num(e.h), 2)}" rx="3"><title>${esc(e.role)} "${esc(e.name)}"</title></rect>`).join('')
   const lines = entries.map((e) => `${e.role} ${JSON.stringify(e.name)}${e.parents ? ` @${e.parents}` : ''} ${e.x},${e.y} ${e.w}x${e.h}${e.testId ? ` #${e.testId}` : ''}`).join('\n')
   const seg = shot
     ? `<span class="seg" role="group" aria-label="Snapshot view">${[['both', 'Both'], ['shot', 'Screenshot'], ['wire', 'Wireframe']].map(([m, l]) => `<button type="button" data-mode="${m}" aria-pressed="${m === mode}">${l}</button>`).join('')}</span>`

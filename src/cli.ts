@@ -50,7 +50,9 @@ const USAGE = `Usage: flowcheck check [--url <url>] [options]
                         screens leading to them); falls back to a full run when it can't tell
   --no-rules            Skip *.rules.ts invariants and *.intent.md coverage
   --open                Open the graph page in the browser when the run ends
-  --no-screenshots      Don't screenshot screens for the graph page
+  --screenshots         Screenshot every screen for the graph page (default on, off when CI is set:
+                        screenshots show whatever the app shows, personal data included)
+  --no-screenshots      Don't screenshot screens
   --headed              Show the browser
 
 Contexts (personas with setup steps) are configured in the settings file only.
@@ -87,6 +89,7 @@ async function main() {
       runs: { type: 'string' },
       length: { type: 'string' },
       open: { type: 'boolean', default: false },
+      screenshots: { type: 'boolean', default: false },
       'no-screenshots': { type: 'boolean', default: false },
       headed: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
@@ -249,7 +252,8 @@ async function main() {
     recordings,
     only: selection?.only ?? undefined,
     rules,
-    screenshots: !values['no-screenshots'],
+    // Pixels can't be redacted: off in CI (artifacts get uploaded) unless asked for.
+    screenshots: values.screenshots || (!values['no-screenshots'] && !process.env.CI),
     headed: values.headed,
     log: (line) => process.stderr.write(`  ${line}\n`),
   })

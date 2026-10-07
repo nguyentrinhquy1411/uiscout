@@ -45,9 +45,9 @@ export interface CrawlOptions extends MonitorOptions {
   /** Run axe on every node. */
   a11y?: boolean
   /**
-   * Screenshot every screen on arrival (JPEG), for the graph page. On by default;
-   * they show whatever the screen shows, so keep them out of shared artifacts when
-   * the app displays personal data.
+   * Screenshot every screen on arrival (JPEG), for the graph page. They show
+   * whatever the screen shows, personal data included; the CLI turns them off in
+   * CI unless asked, so they don't end up in uploaded artifacts.
    */
   screenshots?: boolean
   /** live: the real backend. record: real backend, responses kept. replay: recordings only (§6). */
@@ -361,7 +361,7 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
       // Judge the screen itself once, on arrival.
       const targets = await page.evaluate(collectElements)
       snapshots[`${prefix}${node}`] = snapshotOf(targets)
-      if (options.screenshots !== false) {
+      if (options.screenshots) {
         const shot = await page.screenshot({ type: 'jpeg', quality: 60 }).catch(() => null)
         if (shot) screens[`${prefix}${node}`] = shot
       }

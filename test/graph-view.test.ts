@@ -11,7 +11,7 @@ let zoo: Awaited<ReturnType<typeof startZoo>>
 let run: CrawlResult
 beforeAll(async () => {
   zoo = await startZoo()
-  run = await crawl({ url: zoo.url, maxDepth: 2, settleMs: 150, a11y: false })
+  run = await crawl({ url: zoo.url, maxDepth: 2, settleMs: 150, a11y: false, screenshots: true })
 }, 120_000)
 afterAll(() => zoo?.close())
 
@@ -30,6 +30,22 @@ describe('graph page', () => {
     expect(html).toContain("$'\\u003cimg src=x onerror=alert(1)>$`$&")
     expect(html.split('</script>').length).toBe(2)
   })
+
+  it('coerces snapshot numbers and ignores inherited role names', async () => {
+    const snapshots = { '/': [{ role: 'constructor', name: 'x', testId: null, parents: '', x: '"><img src=x onerror=alert(1)>' as unknown as number, y: 1, w: 2, h: 3 }] }
+    const html = await renderGraphHtml({ graph: run.graph, findings: [], label: 't', source: 's', snapshots })
+    const browser = await chromium.launch()
+    try {
+      const page = await browser.newPage()
+      await page.setContent(html)
+      await page.getByRole('button', { name: 'Screen /', exact: true }).click()
+      expect(await page.locator('.shotbox img').count()).toBe(0)
+      expect(await page.locator('.shotbox rect.wf').getAttribute('x')).toBe('0')
+      expect(await page.locator('.shotbox rect.wf').getAttribute('class')).toBe('wf other')
+    } finally {
+      await browser.close()
+    }
+  }, 60_000)
 
   it('renders every screen, marks the ones with errors, and inspects a screen on click', async () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'fc-graph-'))
