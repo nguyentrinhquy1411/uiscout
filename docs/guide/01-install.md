@@ -13,7 +13,7 @@ git clone https://github.com/nguyentrinhquy1411/uiscout.git ~/dev/uiscout
 cd ~/dev/uiscout
 pnpm install                          # installs dependencies and builds dist/
 pnpm exec playwright install chromium # the browser that walks the app
-pnpm test                             # optional: about 70 tests, ~30 s
+pnpm test                             # optional: about 85 tests, ~30 s
 ```
 
 ## Three ways to run it

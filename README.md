@@ -1,174 +1,108 @@
 # uiscout
 
-Graph-driven frontend testing (design: [`docs/design.md`](docs/design.md)). **User guide: [`docs/guide/`](docs/guide/README.md).** Milestone M1, the zero-spec check: point it at a running app, it clicks every safe control and types into every field on every screen it can reach, once per persona, and judges each step with deterministic oracles. No plugin, no spec, no model.
+**Graph-driven frontend testing.** Point uiscout at a running web app: it clicks every safe control, types into every field and follows every screen it can reach, then judges every step with deterministic checks. You get a map of the app and a list of real defects. No spec to write, no model, and the same commit gives the same result every time.
+
+```sh
+pnpm add -D github:nguyentrinhquy1411/uiscout
+pnpm exec playwright install chromium
+pnpm exec uiscout check --url http://localhost:5173/ --open
+```
+
+```text
+uiscout: 1 errors, 2 warnings · 11 nodes, 223 edges, 227 steps
+
+Errors (1)
+  script       console.error: Error: Base UI: MenuGroupContext is missing.
+               at / → click /.button:account@nav · /calendar → click … · +5 more
+```
+
+**Docs:** the [user guide](docs/guide/README.md) and the [CLI reference](docs/guide/cli-reference.md). A landing page with the whole guide lives in [`site/index.html`](site/index.html). The design is in [`docs/design.md`](docs/design.md).
+
+## What it checks
+
+Every step is judged three ways.
+
+| | Asks | Needs |
+| --- | --- | --- |
+| **Generic oracles** | Is the app broken? Uncaught errors and `console.error`, 5xx and unexpected 4xx, clicks that can't land, overlapping or clipped controls, serious axe rules | Nothing |
+| **Rules and intent** | Does it do the right thing? `always`, `when().then()`, `eventually().within()` in `*.rules.ts`, linked to plain sentences in `*.intent.md` | Rules you write ([guide](docs/guide/07-rules-intent.md)) |
+| **Baseline** | Is it different from yesterday? A control gone or renamed, an action leading elsewhere, a control moved | One `check --update`, committed ([guide](docs/guide/05-baseline.md)) |
+
+## Features
+
+- **The graph page.** `uiscout check --open` opens a map of every screen in columns by steps from the entry. Overlays are dashed and screens with findings carry a badge. Each screen shows its screenshot with every control outlined, how to reach it, the actions from it and the API calls they made. ([guide](docs/guide/04-graph.md))
+- **Personas and hidden routes.** In `uiscout.config.json`, contexts with setup steps (log in as a member) and seed routes that no link reaches. ([guide](docs/guide/03-config.md))
+- **Record and replay.**
+  - `--mode record` keeps redacted API responses.
+  - `--mode replay` answers from them and fails closed, so CI needs no backend and destructive controls can be walked too. ([guide](docs/guide/06-network.md))
+- **Affected-only runs.**
+  - The `uiscout/vite` plugin stamps each interactive element with a steady ID and its source file.
+  - `--affected origin/main` then walks only the screens a change touches. ([guide](docs/guide/10-plugin-affected.md))
+- **Pull request comments.** Each run writes `report.md` with the verdict, the graph diff, the errors and coverage. ([guide](docs/guide/11-ci.md), [workflow](examples/github-workflow.yml))
+- **Fuzzing.** `uiscout fuzz` takes seeded random walks and shrinks each failure to the shortest sequence that still fails. ([guide](docs/guide/08-fuzz.md))
+- **Widget adapters.** Calendars, gantts, boards and canvases are driven by real drags, with invariants checked after each action of a random sequence. ([guide](docs/guide/09-adapters.md), [example](examples/calendar/timegrid.adapter.ts))
+- **MCP server.** `uiscout mcp` lets Claude Code, Cursor or Copilot do three things:
+  - read the graph and findings;
+  - walk one control in a real browser;
+  - propose edges and rules, which stay quarantined until the runner proves them.
+
+  It has no model and needs no API key. ([guide](docs/guide/12-mcp.md))
+- **Production usage overlay.** `uiscout/track` counts which controls real users act on. Reports then rank untested controls by traffic and list walked controls nobody uses. ([guide](docs/guide/15-usage.md))
+
+## Measured
+
+- **uigraph's navigation gauntlet:** 34 of 35 cases observed, with a five-line config.
+  - The case it misses is a link that opens a new tab, which is listed rather than walked.
+  - uigraph itself found 0 screens on a TanStack Router app, because it has no adapter for that router. See [comparison](docs/comparison.md).
+- **First run on a real calendar app:** found 2 bugs, both since fixed:
+  - a menu label rendered outside its group, which threw on every open;
+  - chat failing silently when offline.
+- **Stable baseline:** the same calendar app at depth 2 (31 screens, 352 edges) reruns with no diff.
+- **Affected-only run:** a one-file change walked 5 of 10 screens in 25 s instead of 42 s, and found the same errors.
+- **Widget adapter:** a planted drag bug was caught in 3 of 4 seeded runs, each shrunk to a single move.
+
+## Safety
+
+uiscout really clicks:
+- Controls named like delete, remove, clear, log out, pay or send are skipped unless the run uses replay.
+- Recordings are redacted.
+- Screenshots are off in CI.
+- Browser tools in the MCP server only go to the configured URL.
+
+Run it against a test environment, never `live` against production. See [safety](docs/guide/13-safety.md).
+
+## Commands
+
+```text
+uiscout check    [--url <url>] [options]     walk, judge, compare with the baseline
+uiscout graph    [<graph.json>] [--open]     the graph page, without a run
+uiscout diff     <before> <after>            compare two graphs
+uiscout fuzz     [--seed <n>] [--runs <n>]   seeded random walks
+uiscout adapters [--dir <dir>]               run *.adapter.ts
+uiscout mcp      [--dir <project>]           MCP server on stdio
+uiscout usage    import <files...> | report  production usage overlay
+```
+
+| Import | For |
+| --- | --- |
+| `uiscout/rules` | `always`, `when`, `eventually`, `state` |
+| `uiscout/adapter` | the `WidgetAdapter` type |
+| `uiscout/vite` | the `uiscoutIds()` plugin |
+| `uiscout/track` | `trackUsage()` |
+
+## Developing
+
+Requires Node 24 and pnpm 10.
 
 ```sh
 pnpm install
-pnpm fc check --url http://localhost:5173/ \
-  --depth 2 --allow-overlap "[data-event-id]" --block "**/api/ai/**"
+pnpm test                 # unit tests and the bug zoo
+pnpm scout check --url …  # run the CLI from source
+pnpm build                # dist/ for the published package
 ```
 
-Writes `.uiscout/graph.json`, `findings.json`, `report.txt`, `report.md` and `graph.html`; exits 1 when there are errors.
+`test/zoo/` holds pages with planted defects and clean pages:
+- the defects: an exception, a 500, a broken link, a covered button, overlapping and clipped controls, an unnamed button, a destructive button;
+- pages for every way of moving: an unlinked route, a redirect, a timer, a keyboard-only field, guest and member variants, and a toast that must not count as a dialog.
 
-**See the graph:** `uiscout check --open` opens `graph.html` when the run ends, and `uiscout graph --open` opens the last run's graph (or `uiscout graph uiscout/app.graph.json --open` for the baseline) without running anything. Screens sit in columns by distance from the entry, overlays have a dashed border, screens with findings carry a count badge; click one to see its findings, the path that reaches it, every action from it with the API calls it made, and the ways in. Each screen also shows its **snapshot**: the screenshot taken on arrival with the structural snapshot drawn over it (one box per control, coloured by role; hover for the name), switchable to screenshot or wireframe only, the text form below it, and full size on click. A context filter appears when the graph has more than one. The page is one HTML file plus `screens/*.jpg` next to it, and works offline. Screenshots show whatever the app shows: pass `--no-screenshots` when the run output is shared and the app displays personal data. A baseline keeps only the structure, so `uiscout graph uiscout/app.graph.json` shows wireframes.
-
-Settings can live in `uiscout.config.json` (flags override it). Contexts are configured there only:
-
-```json
-{
-  "url": "http://127.0.0.1:5287/",
-  "depth": 3,
-  "seeds": ["/legacy", "/account"],
-  "block": ["**/api/ai/**"],
-  "contexts": [
-    { "name": "guest" },
-    { "name": "member", "setup": [{ "route": "/login" }, { "fill": "Name", "text": "ann" }, { "click": "Log in" }] }
-  ]
-}
-```
-
-Setup steps: `goto` (full load), `route` (in-app, through the history API, so in-memory sessions survive), `click` (button or link by accessible name), `fill` (field by label or placeholder), `press`, `eval`. They run after every page load.
-
-## Baselines and CI (M2)
-
-`uiscout check --update` accepts a run: it writes `uiscout/app.graph.json` (the graph, a lockfile) and `uiscout/snapshots/<node>.txt` (one line per control: role, name, landmark, position). Commit both. Every later run is compared to them:
-
-| Change | Severity |
-| --- | --- |
-| A control is gone, or its role or name changed | Error |
-| An action now leads to a different screen | Error (transition) |
-| Screens or edges added or removed without updating `uiscout/` | Error (stale lockfile) |
-| A control moved or resized by more than 16 px | Warning |
-| A new control | Info |
-
-`uiscout diff a.json b.json` compares any two graphs. Each run also writes `report.md` for the pull request; see [docs/guide/11-ci.md](docs/guide/11-ci.md) and [examples/github-workflow.yml](examples/github-workflow.yml).
-
-## Identity plugin and affected runs
-
-Without changes to the app, elements are known by fingerprint. Adding the plugin to the app's test build gives every interactive JSX element two attributes:
-
-```ts
-// vite.config.ts
-import { uiscoutIds } from 'uiscout/vite'
-export default defineConfig(({ mode }) => ({
-  plugins: [mode === 'test' && uiscoutIds(), react()],
-}))
-```
-
-- `data-scout-id="cart.CartSummary.submitOrder"`: `<module>.<Component>.<hint>`, the hint taken from the handler (`navigate('/checkout')` → `navigateCheckout`), the label or the text. Never positional; a `data-testid` wins. It becomes the element's ID in the graph, so relabelling a button doesn't change its identity.
-- `data-scout-src="src/features/cart/CartSummary.tsx:48"`: the source witness. Each screen in the baseline lists the files its controls come from.
-
-`uiscout check --affected origin/main` then walks only the screens built from files changed since that ref, plus the screens one step before them, and judges only that part of the baseline. On the uigraph gauntlet a one-file change walked 5 of 10 screens in 25 s instead of 42 s and found the same errors. It runs everything, and says why, when a changed file isn't tied to any screen (a store, a hook, a config) or the baseline has no source witnesses.
-
-## Rules, intent and fuzzing (M3)
-
-**Rules** (oracle B) live in any `*.rules.ts` file in the project; each exported rule is checked on every path walked:
-
-```ts
-import { always, eventually, state, when } from 'uiscout/rules'
-
-export const emptyCartDisablesOrder = always(
-  when(() => state.read('cart.count') === 0).then(() => state.element('cart.order').disabled),
-)
-
-export const errorToastClears = always(
-  when(() => state.element('cart.toast').visible)
-    .then(eventually(() => !state.element('cart.toast').visible).within(5, 'seconds')),
-)
-```
-
-`state` reads the context, the node (`state.node.is('/checkout')`, or a prefix ending in `*`), any control or `data-testid` element (`visible`, `disabled`, `name`), and values the app exposes in test builds through `window.__uiscout = { read: () => ({ 'cart.count': n }) }`. Time is the app's clock, fast-forwards included, so `eventually(...).within(5, 'seconds')` works without waiting. A violation is an error that carries the steps from the entry to the state where the rule broke. An `eventually` still open when a path ends before its window has passed is inconclusive, not a failure.
-
-**Intent files** (`*.intent.md`) are plain sentences, each linked to a rule by name:
-
-```md
-- An empty cart disables "Place order".   <!-- rule: emptyCartDisablesOrder -->
-- Checkout needs a login.                 <!-- rule: pending -->
-```
-
-The report shows intent coverage: each line is linked (its rule passed), failing, pending, stale (it names a rule nobody exports, a warning) or unchecked (no path reached it).
-
-**Fuzzing**: `uiscout fuzz --seed 7 --runs 10 --length 25` takes seeded random walks, checks the rules and the generic oracles after every step, and shrinks each failure to the shortest sequence that still fails. On the zoo a broken toast found after a random walk shrank to the single step "click Save draft". Same seed, same walk.
-
-## Widget adapters (M4)
-
-A complex widget (a calendar grid, a gantt, a canvas editor) is one node with an adapter: semantic actions done with real gestures, state read from a debug hook the app publishes in test builds, and invariants checked after every action of a seeded random sequence. A failing sequence is shrunk to the shortest that still fails.
-
-```ts
-// timegrid.adapter.ts
-import type { WidgetAdapter } from 'uiscout/adapter'
-export default {
-  id: 'calendar.TimeGrid',
-  harness: '/calendar?view=week',
-  read: (page) => page.evaluate(() => window.__uiscout.calendar.getState()),
-  actions: { move: (page, { id, minutes }) => /* drag the block */ },
-  generate: (state, random) => [/* valid next actions */],
-  invariants: [(prev, next, step) => /* true or a message */],
-} satisfies WidgetAdapter<State, Actions>
-```
-
-`uiscout adapters --url … --seed 11 --runs 6 --length 12` runs every `*.adapter.ts`. The runner creates `window.__uiscout` before the app loads, so apps publish hooks only when it's there. [`examples/calendar/timegrid.adapter.ts`](examples/calendar/timegrid.adapter.ts) drives the calendar app's week grid (move, resize, zoom) with five invariants: an event never ends before it starts; each block is drawn where its times say, within 2 px, on its day; a move keeps the duration and lands on the 15-minute grid; a resize keeps the start and at least 15 minutes; zoom changes no data. On the real app 72 random actions passed; with a planted bug (a move into the afternoon drops 15 minutes, reachable only by dragging) it failed in 3 of 4 runs, each shrunk to one move.
-
-## MCP server for coding agents (M5)
-
-`uiscout mcp` serves the project to Claude Code, Cursor or Copilot over stdio, with no model and no API key. Agents read the graph, findings, uncovered controls and intent coverage, walk one control in a real browser (`run_edge`), and propose edges and rules. Proposals are quarantined in `uiscout/proposals.json`: an edge becomes `verified` only when the runner observes it, a rule only when a developer adds it in a pull request. See [docs/guide/12-mcp.md](docs/guide/12-mcp.md).
-
-```sh
-claude mcp add uiscout -- pnpm exec uiscout mcp
-```
-
-## Production usage overlay (M6)
-
-`uiscout/track` counts, in production, which controls real users act on (by `data-scout-id` or `data-testid`, per route; no text, values or user identifiers) and hands batches to your own endpoint or analytics. `uiscout usage import` aggregates them into `uiscout/usage.json`; from then on every run reports usage-weighted coverage, the controls people use that tests don't reach (ranked by traffic, with the reason), and walked controls nobody uses. The graph page tags actions with their real uses, and the MCP server's `get_uncovered` ranks by traffic. See [docs/guide/15-usage.md](docs/guide/15-usage.md).
-
-## Network modes
-
-| `--mode` | Backend | Use |
-| --- | --- | --- |
-| `live` (default) | Real | First runs, local checks. Destructive controls are skipped |
-| `record` | Real | Walks like `live` and keeps every API response in `uiscout/recordings.json` |
-| `replay` | None | Serves API calls (and non-GET form posts) from the recordings. Nothing reaches a server, so destructive controls are walked too. A call with no recording is a warning |
-
-Accept the baseline in the mode CI runs (usually `replay`): replay walks more edges than live.
-
-## What it checks (oracle A)
-
-| Check | Fails when |
-| --- | --- |
-| Script | Uncaught exception, unhandled rejection, `console.error` during a step |
-| Network | A same-origin request returns 5xx, an unexpected 4xx, or fails |
-| Dead control | A click can't land (covered, intercepted), or no point of the control is reachable |
-| Layout | Two controls overlap by ≥ 25 %, or a control's text is clipped without an ellipsis (warning) |
-| Accessibility | An axe rule of serious or critical impact (warning; colour contrast excluded) |
-| Transition | A node can't be reached again by replaying its path (warning) |
-
-## How it walks
-
-- **Nodes** are routes (data IDs collapsed to `:id`) plus the overlay on top (`/calendar [Settings]`). An open overlay owns the screen: only its controls are walked.
-- **Elements** are known by fingerprint (role, accessible name, test ID, landmark parents, coarse position) and found again by weighted similarity. Inexact matches are listed as healed.
-- **Actions:** buttons and links are clicked; text fields get `fillText` (default "uiscout") and Enter. Steps taken on a screen that stay on it (typed text, a toggle) become part of the path to anything found after them, so every node can be reached again.
-- **Contexts:** each persona's setup runs after every page load; nodes and edges record which contexts saw them, so the guest's `/pricing → /login` and the member's `/pricing → /account` are both in the graph.
-- **Seeds:** routes no link reaches are entered through the history API from the entry. A seed that redirects is kept as a `route` edge (`/legacy → /pricing`).
-- **Timers:** after each step the clock is fast-forwarded (5 s by default), so a redirect three seconds after "Order placed" is recorded as a `delayed` edge without waiting.
-- **Safety:** controls named delete / remove / clear / reset / send… are never clicked.
-- **Isolation:** each node is explored in a fresh browser context; a reset opens a new one, so state saved by an earlier click (localStorage, IndexedDB) can't leak.
-- **Quiescence** instead of timeouts: a step is judged once no request is in flight and the DOM has been still for 250 ms. Animations and transitions are disabled.
-- **Flake policy:** a failed click is retried once from a fresh context; a pass there is listed as flaky and never fails the run.
-- **Speed:** nodes run 4 at a time; a control on every screen (the app rail) is walked once.
-
-## Using it from another project
-
-```sh
-pnpm add -D github:nguyentrinhquy1411/uiscout   # builds dist/ on install
-pnpm exec uiscout check --url http://localhost:5173/
-```
-
-Rule files import `uiscout/rules`; the Vite plugin is `uiscout/vite`.
-
-## Tests
-
-```sh
-pnpm test     # unit tests + the bug zoo
-```
-
-`test/zoo/` holds pages with planted defects (an exception, a 500, `console.error`, a broken link, a covered button, overlapping and clipped controls, an unnamed button, a destructive button) and clean pages, plus pages for each way of moving: a route no link reaches, a redirect, a timer, a keyboard-only field, a page that differs for guests and members, and a toast that must not count as a dialog. Every oracle must catch its defect and report nothing on the clean pages.
+Every oracle must catch its defect and stay silent on the clean pages.
