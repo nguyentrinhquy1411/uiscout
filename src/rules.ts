@@ -40,9 +40,12 @@ export interface ElementView {
   name: string
 }
 
-let current: ObservedState | null = null
-/** Element IDs rules asked about, to find rules that refer to things the app no longer has. */
-export const referenced = new Set<string>()
+/**
+ * The state being judged lives on globalThis, not in this module: a rules file that
+ * imports 'flowcheck/rules' may get a different copy of this module than the
+ * runner (the built package vs. the source), and both must see the same state.
+ */
+const slot = globalThis as unknown as { __flowcheckState?: ObservedState | null }
 
 /** The state a rule's predicates read; bound by the evaluator while a predicate runs. */
 export const state = {
@@ -58,7 +61,6 @@ export const state = {
     return now().url
   },
   element(id: string): ElementView {
-    referenced.add(id)
     const el = now().elements[id]
     return { visible: Boolean(el), exists: Boolean(el), disabled: el?.disabled ?? false, name: el?.name ?? '' }
   },
@@ -68,17 +70,17 @@ export const state = {
 }
 
 function now(): ObservedState {
-  if (!current) throw new Error('state is only readable inside a rule predicate')
-  return current
+  if (!slot.__flowcheckState) throw new Error('state is only readable inside a rule predicate')
+  return slot.__flowcheckState
 }
 
 export function withState<T>(s: ObservedState, fn: () => T): T {
-  const previous = current
-  current = s
+  const previous = slot.__flowcheckState ?? null
+  slot.__flowcheckState = s
   try {
     return fn()
   } finally {
-    current = previous
+    slot.__flowcheckState = previous
   }
 }
 
@@ -158,6 +160,7 @@ export function check(rule: Rule, trace: ObservedState[]): Violation | null {
     if (cond instanceof Error) return fail(i, `condition threw: ${cond.message}`)
     if (!cond) continue
     const consequent = rule.body.consequent
+    // Duck-typed like the rule itself: it may come from another copy of this module.
     if (typeof consequent === 'function') {
       const ok = holds(consequent, s)
       if (ok instanceof Error) return fail(i, `threw: ${ok.message}`)
@@ -180,11 +183,15 @@ export function check(rule: Rule, trace: ObservedState[]): Violation | null {
   return null
 }
 
-/** Rules exported by a loaded module, named after their exports. */
+/**
+ * Rules exported by a loaded module, named after their exports. Recognised by
+ * shape, not instanceof, for the same two-copies reason as the state slot.
+ */
 export function rulesOf(module: Record<string, unknown>): Rule[] {
   return Object.entries(module).flatMap(([name, value]) => {
-    if (!(value instanceof Rule)) return []
-    value.name = name
-    return [value]
+    if (!value || typeof value !== 'object' || (value as { kind?: unknown }).kind !== 'rule') return []
+    const rule = value as Rule
+    rule.name = name
+    return [rule]
   })
 }

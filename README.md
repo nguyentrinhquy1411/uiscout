@@ -58,6 +58,36 @@ export default defineConfig(({ mode }) => ({
 
 `flowcheck check --affected origin/main` then walks only the screens built from files changed since that ref, plus the screens one step before them, and judges only that part of the baseline. On the uigraph gauntlet a one-file change walked 5 of 10 screens in 25 s instead of 42 s and found the same errors. It runs everything, and says why, when a changed file isn't tied to any screen (a store, a hook, a config) or the baseline has no source witnesses.
 
+## Rules, intent and fuzzing (M3)
+
+**Rules** (oracle B) live in any `*.rules.ts` file in the project; each exported rule is checked on every path walked:
+
+```ts
+import { always, eventually, state, when } from 'flowcheck/rules'
+
+export const emptyCartDisablesOrder = always(
+  when(() => state.read('cart.count') === 0).then(() => state.element('cart.order').disabled),
+)
+
+export const errorToastClears = always(
+  when(() => state.element('cart.toast').visible)
+    .then(eventually(() => !state.element('cart.toast').visible).within(5, 'seconds')),
+)
+```
+
+`state` reads the context, the node (`state.node.is('/checkout')`, or a prefix ending in `*`), any control or `data-testid` element (`visible`, `disabled`, `name`), and values the app exposes in test builds through `window.__flowcheck = { read: () => ({ 'cart.count': n }) }`. Time is the app's clock, fast-forwards included, so `eventually(...).within(5, 'seconds')` works without waiting. A violation is an error that carries the steps from the entry to the state where the rule broke. An `eventually` still open when a path ends before its window has passed is inconclusive, not a failure.
+
+**Intent files** (`*.intent.md`) are plain sentences, each linked to a rule by name:
+
+```md
+- An empty cart disables "Place order".   <!-- rule: emptyCartDisablesOrder -->
+- Checkout needs a login.                 <!-- rule: pending -->
+```
+
+The report shows intent coverage: each line is linked (its rule passed), failing, pending, stale (it names a rule nobody exports, a warning) or unchecked (no path reached it).
+
+**Fuzzing**: `flowcheck fuzz --seed 7 --runs 10 --length 25` takes seeded random walks, checks the rules and the generic oracles after every step, and shrinks each failure to the shortest sequence that still fails. On the zoo a broken toast found after a random walk shrank to the single step "click Save draft". Same seed, same walk.
+
 ## Network modes
 
 | `--mode` | Backend | Use |
@@ -92,6 +122,15 @@ Accept the baseline in the mode CI runs (usually `replay`): replay walks more ed
 - **Quiescence** instead of timeouts: a step is judged once no request is in flight and the DOM has been still for 250 ms. Animations and transitions are disabled.
 - **Flake policy:** a failed click is retried once from a fresh context; a pass there is listed as flaky and never fails the run.
 - **Speed:** nodes run 4 at a time; a control on every screen (the app rail) is walked once.
+
+## Using it from another project
+
+```sh
+pnpm add -D github:nguyentrinhquy1411/flowcheck   # builds dist/ on install
+pnpm exec flowcheck check --url http://localhost:5173/
+```
+
+Rule files import `flowcheck/rules`; the Vite plugin is `flowcheck/vite`.
 
 ## Tests
 

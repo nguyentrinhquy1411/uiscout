@@ -8,6 +8,8 @@ import { compareToBaseline, diffGraphs, isEmptyDiff, loadBaseline, saveBaseline 
 import { type FileConfig, loadConfig } from './config.ts'
 import { loadRecordings, type NetworkMode, saveRecordings } from './network.ts'
 import { crawl } from './crawl.ts'
+import { fuzz } from './fuzz.ts'
+import { type IntentSummary, loadIntent, loadRules, summarizeIntent } from './intent.ts'
 import { renderDiff, renderMarkdown, renderText } from './report.ts'
 import type { Graph } from './types.ts'
 
@@ -20,6 +22,7 @@ import type { Graph } from './types.ts'
 
 const USAGE = `Usage: flowcheck check [--url <url>] [options]
        flowcheck diff <before.graph.json> <after.graph.json>
+       flowcheck fuzz [--url <url>] [--seed <n>] [--runs <n>] [--length <n>]
 
   --config <file>       Settings file (default ./flowcheck.config.json when it exists)
   --url <url>           Entry URL of a running app
@@ -41,6 +44,7 @@ const USAGE = `Usage: flowcheck check [--url <url>] [options]
   --update              Accept this run as the new baseline instead of comparing
   --affected <ref>      Walk only the screens built from files changed since <ref> (and the
                         screens leading to them); falls back to a full run when it can't tell
+  --no-rules            Skip *.rules.ts invariants and *.intent.md coverage
   --headed              Show the browser
 
 Contexts (personas with setup steps) are configured in the settings file only.
@@ -66,11 +70,15 @@ async function main() {
       block: { type: 'string' },
       'fast-forward': { type: 'string' },
       'no-a11y': { type: 'boolean', default: false },
+      'no-rules': { type: 'boolean', default: false },
       concurrency: { type: 'string' },
       baseline: { type: 'string' },
       mode: { type: 'string' },
       update: { type: 'boolean', default: false },
       affected: { type: 'string' },
+      seed: { type: 'string' },
+      runs: { type: 'string' },
+      length: { type: 'string' },
       headed: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
@@ -90,6 +98,38 @@ async function main() {
   const configPath = values.config ?? (existsSync('flowcheck.config.json') ? 'flowcheck.config.json' : undefined)
   const file: FileConfig = configPath ? await loadConfig(configPath) : {}
   const url = values.url ?? file.url
+  if (positionals[0] === 'fuzz' && url) {
+    // Seeded random walks against the invariants and the generic oracles (§7B); nightly.
+    const seed = num(values.seed) ?? Math.floor(Math.random() * 1e9)
+    const network = (values.mode ?? file.network ?? 'live') as NetworkMode
+    const baselineDir = path.resolve(values.baseline ?? file.baseline ?? 'flowcheck')
+    const failures = await fuzz({
+      url,
+      seed,
+      runs: num(values.runs),
+      length: num(values.length),
+      rules: values['no-rules'] ? [] : await loadRules(process.cwd()),
+      block: list(values.block) ?? file.block,
+      allow4xx: list(values['allow-4xx']) ?? file.allow4xx,
+      ignoreConsole: file.ignoreConsole,
+      network,
+      recordings: network === 'replay' ? await loadRecordings(path.join(baselineDir, 'recordings.json')) : undefined,
+      fillText: file.fillText,
+      fastForwardMs: num(values['fast-forward']) ?? file.fastForwardMs,
+      log: (line) => process.stderr.write(`  ${line}\n`),
+    })
+    const out = path.resolve(values.out)
+    await mkdir(out, { recursive: true })
+    await writeFile(path.join(out, 'fuzz.json'), `${JSON.stringify({ seed, failures }, null, 2)}\n`)
+    const lines = [`flowcheck fuzz (seed ${seed}): ${failures.length} failure${failures.length === 1 ? '' : 's'}`]
+    for (const f of failures) {
+      lines.push('', `  ${f.what}`, `  seed ${f.seed}, shrunk from ${f.original} to ${f.steps.length} step${f.steps.length === 1 ? '' : 's'}:`)
+      lines.push(...(f.steps.length ? f.steps.map((s, i) => `    ${i + 1}. ${s}`) : ['    (on load)']))
+    }
+    process.stdout.write(`${lines.join('\n')}\n`)
+    process.exit(failures.length ? 1 : 0)
+  }
+
   if (values.help || positionals[0] !== 'check' || !url) {
     process.stdout.write(USAGE)
     process.exit(values.help ? 0 : 2)
@@ -102,6 +142,11 @@ async function main() {
   if (!['live', 'record', 'replay'].includes(network)) throw new Error(`--mode must be live, record or replay, not "${network}"`)
   const recordingsFile = path.join(baselineDir, 'recordings.json')
   const recordings = network === 'replay' ? await loadRecordings(recordingsFile) : {}
+  // Invariants (§7B) and the intent lines that link to them (§9), from the project.
+  const rules = values['no-rules'] ? [] : await loadRules(process.cwd())
+  const intentLines = values['no-rules'] ? [] : await loadIntent(process.cwd())
+  if (rules.length) process.stderr.write(`  rules: ${rules.map((r) => r.name).join(', ')}\n`)
+
   // Affected-only (§10): needs a baseline that knows each screen's sources and paths.
   const baseline = existsSync(baselineDir) ? await loadBaseline(baselineDir) : null
   let selection: Selection | null = null
@@ -135,6 +180,7 @@ async function main() {
     network,
     recordings,
     only: selection?.only ?? undefined,
+    rules,
     headed: values.headed,
     log: (line) => process.stderr.write(`  ${line}\n`),
   })
@@ -161,13 +207,21 @@ async function main() {
     }
   }
 
+  let intent: IntentSummary | undefined
+  if (intentLines.length) {
+    intent = summarizeIntent(intentLines, result.ruleResults)
+    for (const l of intent.lines.filter((x) => x.state === 'stale')) {
+      result.findings.push({ oracle: 'rule', severity: 'warning', at: `${l.file}:${l.line}`, message: `intent line links to rule "${l.rule}", which no rules file exports` })
+    }
+  }
+
   const out = path.resolve(values.out)
   await mkdir(out, { recursive: true })
-  const text = renderText(result, diffInfo)
+  const text = renderText(result, diffInfo, intent)
   await writeFile(path.join(out, 'graph.json'), `${JSON.stringify(result.graph, null, 2)}\n`)
   await writeFile(path.join(out, 'findings.json'), `${JSON.stringify({ findings: result.findings, skipped: result.skipped, healed: result.healed, restless: result.restless, flaky: result.flaky }, null, 2)}\n`)
   await writeFile(path.join(out, 'report.txt'), `${text}\n`)
-  const markdown = renderMarkdown(result, diffInfo)
+  const markdown = renderMarkdown(result, diffInfo, intent)
   await writeFile(path.join(out, 'report.md'), markdown)
   // In GitHub Actions the run summary shows the same report without any token.
   if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, markdown)

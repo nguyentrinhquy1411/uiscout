@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Cart</title></head>
+<body>
+  <main>
+    <h1>Cart</h1>
+    <p id="count">0 items</p>
+    <button type="button" id="add">Add item</button>
+    <!-- Planted bug: enabled while the cart is empty. -->
+    <button type="button" id="order" data-testid="cart.order">Place order</button>
+    <button type="button" id="draft">Save draft</button>
+    <div id="toast" data-testid="cart.toast" role="status" hidden>Order failed</div>
+    <div id="saved" data-testid="cart.saved" role="status" hidden>Draft saved</div>
+  </main>
+  <script>
+    let n = 0
+    window.__flowcheck = { read: () => ({ 'cart.count': n }) }
+    const $ = (id) => document.getElementById(id)
+    $('add').onclick = () => { n++; $('count').textContent = n + ' items' }
+    $('order').onclick = () => {
+      if (n > 0) return
+      $('toast').hidden = false
+      setTimeout(() => { $('toast').hidden = true }, 3000)
+    }
+    // Planted bug: this toast never goes away.
+    $('draft').onclick = () => { $('saved').hidden = false }
+  </script>
+</body></html>

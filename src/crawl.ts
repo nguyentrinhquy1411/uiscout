@@ -90,7 +90,7 @@ const VIEWPORT = { width: 1280, height: 800 }
 const DEFAULT_CONTEXT: ContextConfig = { name: 'default' }
 
 /** Node identity: the route plus whatever overlay is on top (state abstraction, §5). */
-async function nodeIdOf(page: Page, origin: string, monitor?: StepMonitor): Promise<string> {
+export async function nodeIdOf(page: Page, origin: string, monitor?: StepMonitor): Promise<string> {
   let url = new URL(page.url())
   // An unreachable external site leaves the browser on its own error page.
   if (url.protocol === 'chrome-error:' && monitor?.lastNavigation) url = new URL(monitor.lastNavigation)
@@ -100,7 +100,7 @@ async function nodeIdOf(page: Page, origin: string, monitor?: StepMonitor): Prom
   return overlay ? `${route} [${overlay}]` : route
 }
 
-async function quiesce(page: Page, monitor: StepMonitor, settleMs: number, timeoutMs: number): Promise<boolean> {
+export async function quiesce(page: Page, monitor: StepMonitor, settleMs: number, timeoutMs: number): Promise<boolean> {
   const deadline = Date.now() + timeoutMs
   let last = -1
   let quietSince = Date.now()
@@ -118,7 +118,7 @@ async function quiesce(page: Page, monitor: StepMonitor, settleMs: number, timeo
 }
 
 /** A readable label for a step, used in node paths and edge IDs. */
-function stepLabel(step: Step, elId: string): string {
+export function stepLabel(step: Step, elId: string): string {
   if (step.kind === 'route') return `route ${step.path}`
   if (step.kind === 'fill') return `fill ${elId}`
   return elId
@@ -184,6 +184,7 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
     if (!seen) return null
     const node = await nodeIdOf(page, origin)
     const elements: ObservedState['elements'] = {}
+    for (const m of seen.marked) elements[m.id] = { role: 'marked', name: m.name, disabled: m.disabled }
     for (const el of await page.evaluate(collectElements).catch(() => [])) {
       elements[elementId(node, fingerprintOf(el))] = { role: el.role, name: el.name, disabled: el.disabled }
     }
@@ -517,7 +518,7 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
   }
 }
 
-function skipReason(el: RawElement, safety: string, origin: string): Skip['reason'] | null {
+export function skipReason(el: RawElement, safety: string, origin: string): Skip['reason'] | null {
   if (safety === 'destructive') return 'destructive'
   if (el.disabled) return 'disabled'
   if (el.role === 'combobox' || el.role === 'slider') return 'input'
@@ -528,7 +529,7 @@ function skipReason(el: RawElement, safety: string, origin: string): Skip['reaso
 }
 
 /** Clicks control `i` where a click lands on it; returns why it failed, or null. */
-async function clickAt(page: Page, i: number): Promise<string | null> {
+export async function clickAt(page: Page, i: number): Promise<string | null> {
   const position = (await page.evaluate(hitPoint, i)) ?? undefined
   return page.locator(`[data-fc-i="${i}"]`).click({ timeout: 3000, position }).then(() => null, (err: Error) => clickFailure(err.message))
 }
@@ -536,7 +537,7 @@ async function clickAt(page: Page, i: number): Promise<string | null> {
 const globalKey = (fp: Fingerprint) => `${fp.role}|${fp.name}|${fp.parents}|${fp.testId ?? ''}`
 
 /** Playwright's own explanation from the call log: "<div> intercepts pointer events", "element is not visible"… */
-function clickFailure(message: string): string {
+export function clickFailure(message: string): string {
   // Playwright colours its call log for terminals.
   const log = message.replace(/\x1b\[[0-9;]*m/g, '').split('\n').map((l) => l.trim().replace(/^- /, ''))
   const reason = [...log].reverse().find((l) => /intercepts pointer events|not visible|not stable|not enabled|not editable|detached|outside of the viewport/.test(l))

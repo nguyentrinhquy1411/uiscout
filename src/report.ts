@@ -1,5 +1,6 @@
 import type { GraphDiff } from './baseline.ts'
 import type { CrawlResult } from './crawl.ts'
+import type { IntentSummary } from './intent.ts'
 import type { Finding } from './types.ts'
 
 /*
@@ -28,7 +29,20 @@ export function renderDiff(diff: GraphDiff, against: string): string[] {
   return [...lines, '']
 }
 
-export function renderText(result: CrawlResult, diff?: { diff: GraphDiff; against: string }): string {
+const ICON: Record<string, string> = { linked: '✓', failing: '✗', pending: '·', stale: '!', unchecked: '?' }
+
+/** Intent coverage (§9): which plain-language lines are backed by a passing rule. */
+export function renderIntent(summary: IntentSummary): string[] {
+  if (!summary.total) return []
+  const lines = [`Intent coverage ${summary.linked} of ${summary.total} lines`]
+  for (const l of summary.lines) {
+    const note = l.state === 'stale' ? `  (no rule "${l.rule}")` : l.state === 'unchecked' ? '  (rule never ran: no path reached it)' : l.rule ? `  (${l.rule})` : ''
+    lines.push(`  ${ICON[l.state]} ${l.state.padEnd(9)} ${l.file}:${l.line}  ${l.text}${note}`)
+  }
+  return [...lines, '']
+}
+
+export function renderText(result: CrawlResult, diff?: { diff: GraphDiff; against: string }, intent?: IntentSummary): string {
   const errors = result.findings.filter((f) => f.severity === 'error')
   const warnings = result.findings.filter((f) => f.severity === 'warning')
   const { nodes, edges } = result.graph
@@ -40,6 +54,7 @@ export function renderText(result: CrawlResult, diff?: { diff: GraphDiff; agains
   section(lines, 'Errors', errors)
   section(lines, 'Warnings', warnings)
   section(lines, 'Changes', result.findings.filter((f) => f.severity === 'info'))
+  if (intent) lines.push(...renderIntent(intent))
 
   if (result.healed.length) {
     lines.push(`Healed lookups (${result.healed.length}): found by similarity, not exact match`)
@@ -79,6 +94,9 @@ function section(lines: string[], title: string, findings: Finding[]): void {
     lines.push(`  ${oracle.padEnd(12)} ${message}`)
     const where = list.map((f) => f.at)
     lines.push(`  ${''.padEnd(12)} at ${where.slice(0, 3).join(' · ')}${where.length > 3 ? ` · +${where.length - 3} more` : ''}`)
+    // A rule violation is only reproducible with the steps that led to it.
+    const trace = list.find((f) => f.trace)?.trace
+    if (trace) lines.push(`  ${''.padEnd(12)} via ${trace.join(' → ')}`)
   }
   if (byMessage.size > MAX_PER_SECTION) lines.push(`  … ${byMessage.size - MAX_PER_SECTION} more in findings.json`)
   lines.push('')
@@ -94,7 +112,7 @@ const MAX_MD_ITEMS = 10
  * The pull request comment (§10): a verdict line, the graph diff and the errors up
  * front, the full text report folded underneath. Short and true.
  */
-export function renderMarkdown(result: CrawlResult, diff?: { diff: GraphDiff; against: string }): string {
+export function renderMarkdown(result: CrawlResult, diff?: { diff: GraphDiff; against: string }, intent?: IntentSummary): string {
   const errors = result.findings.filter((f) => f.severity === 'error')
   const warnings = result.findings.filter((f) => f.severity === 'warning')
   const e = distinct(errors)
@@ -122,7 +140,8 @@ export function renderMarkdown(result: CrawlResult, diff?: { diff: GraphDiff; ag
     if (byMessage.size > MAX_MD_ITEMS) md.push(`- … ${byMessage.size - MAX_MD_ITEMS} more`)
     md.push('')
   }
-  md.push('<details><summary>Full report</summary>', '', '```text', renderText(result, diff), '```', '', '</details>')
+  if (intent?.total) md.push(`**Intent coverage** ${intent.linked} of ${intent.total} lines backed by a passing rule.`, '')
+  md.push('<details><summary>Full report</summary>', '', '```text', renderText(result, diff, intent), '```', '', '</details>')
   return `${md.join('\n')}\n`
 }
 

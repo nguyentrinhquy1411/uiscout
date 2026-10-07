@@ -202,8 +202,12 @@ export function hitPoint(i: number): { x: number; y: number } | null {
   return null
 }
 
-/** What a rule can read besides the controls: the URL, the app's clock, and values it exposes. */
-export function observePage(): { url: string; time: number; reads: Record<string, unknown> } {
+/**
+ * What a rule can read besides the controls: the URL, the app's clock, values the
+ * app exposes, and any visible element marked with a test ID (a toast, a badge)
+ * even when it isn't interactive.
+ */
+export function observePage(): { url: string; time: number; reads: Record<string, unknown>; marked: Array<{ id: string; name: string; disabled: boolean }> } {
   const hook = (window as unknown as { __flowcheck?: { read?: () => Record<string, unknown> } }).__flowcheck
   let reads: Record<string, unknown> = {}
   try {
@@ -211,5 +215,16 @@ export function observePage(): { url: string; time: number; reads: Record<string
   } catch {
     // A broken hook reads as nothing; the rule that needs it will say so.
   }
-  return { url: location.pathname + location.search, time: Date.now(), reads }
+  const marked = [...document.querySelectorAll<HTMLElement>('[data-testid],[data-fc-id]')]
+    .filter((el) => {
+      const r = el.getBoundingClientRect()
+      const style = getComputedStyle(el)
+      return r.width > 0 && r.height > 0 && style.visibility !== 'hidden' && style.display !== 'none' && !el.closest('[hidden],[aria-hidden=true]')
+    })
+    .map((el) => ({
+      id: (el.getAttribute('data-testid') ?? el.getAttribute('data-fc-id'))!,
+      name: (el.getAttribute('aria-label') || el.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 80),
+      disabled: (el as HTMLButtonElement).disabled === true || el.getAttribute('aria-disabled') === 'true',
+    }))
+  return { url: location.pathname + location.search, time: Date.now(), reads, marked }
 }
