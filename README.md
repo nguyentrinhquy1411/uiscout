@@ -16,7 +16,7 @@ Errors (1)
                at / → click /.button:account@nav · /calendar → click … · +5 more
 ```
 
-**Docs:** the [user guide](docs/guide/README.md) and the [CLI reference](docs/guide/cli-reference.md). A landing page with the whole guide lives in [`site/index.html`](site/index.html). The design is in [`docs/design.md`](docs/design.md).
+**Docs:** the [user guide](docs/guide/README.md) and the [CLI reference](docs/guide/cli-reference.md). `pnpm site` builds the website into `site-dist/`: the landing page in [`site/`](site/) and one page per guide chapter, rendered from the Markdown. The design is in [`docs/design.md`](docs/design.md).
 
 ## What it checks
 

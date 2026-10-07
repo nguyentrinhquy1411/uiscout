@@ -16,7 +16,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json && cp src/graph-view.html dist/",
-    "prepare": "tsc -p tsconfig.build.json && cp src/graph-view.html dist/"
+    "prepare": "tsc -p tsconfig.build.json && cp src/graph-view.html dist/",
+    "site": "node scripts/build-site.ts"
   },
   "dependencies": {
     "@axe-core/playwright": "^4.13.0",
@@ -28,6 +29,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
+    "marked": "^18.1.0",
     "typescript": "~6.0.2",
     "vitest": "^5.0.1"
   },
