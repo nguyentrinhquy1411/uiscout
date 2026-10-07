@@ -49,6 +49,15 @@ interface RawEvent {
 
 const ACTIONS = new Set(['click', 'fill', 'submit', 'view'])
 
+/*
+ * Usage arrives from production traffic, so anyone can send a forged batch to the
+ * endpoint. Routes and IDs end up in pull request comments and reports: accept
+ * only the characters real ones use (no backticks, pipes, brackets, quotes, angle
+ * brackets, whitespace or control characters) and a sane length.
+ */
+const SAFE_ROUTE = /^\/[\w\-./:~%@+]{0,200}$/
+const SAFE_ID = /^[\w\-.:@/~+]{1,200}$/
+
 /** One event, whatever shape the export gave it; null when it can't be used. */
 function normalize(e: RawEvent): { route: string; id: string; action: UsageAction | 'view'; count: number } | null {
   const rawRoute = typeof e.route === 'string' ? e.route : typeof e.path === 'string' ? e.path : null
@@ -60,7 +69,9 @@ function normalize(e: RawEvent): { route: string; id: string; action: UsageActio
   if (!Number.isFinite(count) || count <= 0) return null
   // A full URL or a path with a query: keep the path, collapse data IDs like the graph does.
   const pathname = rawRoute.startsWith('http') ? new URL(rawRoute).pathname : rawRoute.split(/[?#]/)[0]
-  return { route: routeOf(pathname), id, action, count: Math.round(count) }
+  const route = routeOf(pathname)
+  if (!SAFE_ROUTE.test(route) || (id && !SAFE_ID.test(id))) return null
+  return { route, id, action, count: Math.round(count) }
 }
 
 function csvRows(text: string): RawEvent[] {
@@ -118,7 +129,14 @@ export function mergeUsage(usage: Usage, events: ReturnType<typeof parseUsage>, 
 }
 
 export async function loadUsage(file: string): Promise<Usage | null> {
-  return existsSync(file) ? (JSON.parse(await readFile(file, 'utf8')) as Usage) : null
+  if (!existsSync(file)) return null
+  const usage = JSON.parse(await readFile(file, 'utf8')) as Usage
+  // The file may be edited by hand or come from elsewhere: hold it to the import rules.
+  return {
+    ...usage,
+    controls: (usage.controls ?? []).filter((c) => SAFE_ROUTE.test(c.route) && SAFE_ID.test(c.id) && Number.isFinite(c.count)),
+    views: Object.fromEntries(Object.entries(usage.views ?? {}).filter(([r, n]) => SAFE_ROUTE.test(r) && Number.isFinite(n))),
+  }
 }
 
 export async function saveUsage(file: string, usage: Usage): Promise<void> {

@@ -18,6 +18,16 @@ describe('reading usage exports', () => {
     ])
   })
 
+  it('drops forged routes and IDs that could inject markup into reports', () => {
+    const forged = JSON.stringify([
+      { route: '/docs', id: 'ok.Id' },
+      { route: '/docs', id: 'x` [click](https://evil.example) `' },
+      { route: '/a|b\n<img src=x>', id: 'y' },
+      { route: '/docs', id: 'z'.repeat(300) },
+    ])
+    expect(parseUsage(forged).map((e) => e.id)).toEqual(['ok.Id'])
+  })
+
   it('merges imports into counts per control and views per route', () => {
     let u = mergeUsage(emptyUsage(), parseUsage('route,id,count\n/a,x,2\n/a,x,3'), 'one.csv')
     u = mergeUsage(u, parseUsage('[{"route":"/a","id":"x"},{"route":"/a","action":"view","count":7}]'), 'two.json')

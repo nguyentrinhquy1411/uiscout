@@ -129,7 +129,7 @@ export function renderMarkdown(result: CrawlResult, diff?: { diff: GraphDiff; ag
   ]
   if (diff) {
     const changed = renderDiff(diff.diff, diff.against).slice(1).filter((l) => l.trim() && l.trim() !== '(no change)')
-    if (changed.length) md.push('**Graph changes**', '', '```diff', ...changed.map((l) => l.replace(/^ {2}/, '').replace(/^~/, '!')), '```', '')
+    if (changed.length) md.push('**Graph changes**', '', ...fence('diff', changed.map((l) => l.replace(/^ {2}/, '').replace(/^~/, '!')).join('\n')), '')
   }
   const byMessage = new Map<string, Finding[]>()
   for (const f of errors) byMessage.set(`${f.oracle}|${f.message}`, [...(byMessage.get(`${f.oracle}|${f.message}`) ?? []), f])
@@ -137,18 +137,30 @@ export function renderMarkdown(result: CrawlResult, diff?: { diff: GraphDiff; ag
     md.push('**Errors**', '')
     for (const list of [...byMessage.values()].slice(0, MAX_MD_ITEMS)) {
       const { oracle, message, at } = list[0]
-      md.push(`- **${oracle}** — ${escapeMd(message)}  \n  <sub>at \`${at}\`${list.length > 1 ? ` and ${list.length - 1} more` : ''}</sub>`)
+      md.push(`- **${oracle}** — ${escapeMd(message)}  \n  <sub>at ${code(at)}${list.length > 1 ? ` and ${list.length - 1} more` : ''}</sub>`)
     }
     if (byMessage.size > MAX_MD_ITEMS) md.push(`- … ${byMessage.size - MAX_MD_ITEMS} more`)
     md.push('')
   }
   if (intent?.total) md.push(`**Intent coverage** ${intent.linked} of ${intent.total} lines backed by a passing rule.`, '')
   if (usage) md.push(...renderUsageMarkdown(usage.analysis))
-  md.push('<details><summary>Full report</summary>', '', '```text', renderText(result, diff, intent, usage), '```', '', '</details>')
+  md.push('<details><summary>Full report</summary>', '', ...fence('text', renderText(result, diff, intent, usage)), '', '</details>')
   return `${md.join('\n')}\n`
 }
 
 const escapeMd = (s: string) => s.replace(/([<>*_`|])/g, '\\$1')
+
+/*
+ * Report text carries app data (error messages, routes, usage IDs from production):
+ * a code fence longer than any backtick run inside it can't be closed early, and
+ * inline code drops what could end the span or the table cell.
+ */
+function fence(lang: string, body: string): string[] {
+  const longest = Math.max(0, ...(body.match(/`+/g) ?? []).map((r) => r.length))
+  const ticks = '`'.repeat(Math.max(3, longest + 1))
+  return [ticks + lang, body, ticks]
+}
+const code = (s: string) => `\`${s.replace(/[`|\r\n<>\[\]]/g, '')}\``
 
 const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : 'n/a')
 const MAX_USAGE_ROWS = 15
@@ -178,7 +190,9 @@ export function renderUsageMarkdown(u: UsageAnalysis): string[] {
   const md = [`**Usage-weighted coverage** ${pct(u.walkedActions, u.totalActions)} of ${u.totalActions.toLocaleString('en-US')} real actions.`]
   if (u.untested.length) {
     md.push('', '| Uses | Screen | Control not walked | Why |', '| ---: | --- | --- | --- |')
-    for (const t of u.untested.slice(0, 5)) md.push(`| ${t.count.toLocaleString('en-US')} | \`${t.route}\` | \`${t.id}\` | ${t.reason} |`)
+    // Routes and IDs come from production traffic: imports already reject unsafe ones,
+    // and this escapes again so a forged value can't break out of its cell.
+    for (const t of u.untested.slice(0, 5)) md.push(`| ${t.count.toLocaleString('en-US')} | ${code(t.route)} | ${code(t.id)} | ${escapeMd(t.reason)} |`)
   }
   return [...md, '']
 }

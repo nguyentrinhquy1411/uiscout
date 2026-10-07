@@ -28,4 +28,23 @@ describe('pull request comment', () => {
     expect(md).toContain('### uiscout: ✅ no errors')
     expect(md).toContain('```diff\n+ node   /new\n```')
   })
+
+  it('keeps hostile text inside its code span and fence', () => {
+    const evil = 'x` | [phish](https://evil.example) <img src=x>\n```\n# injected'
+    const md = renderMarkdown(result([]), undefined, undefined, {
+      against: 'uiscout/usage.json',
+      analysis: { totalActions: 10, walkedActions: 0, untested: [{ route: '/a', id: evil, count: 10, reason: 'screen not reached by the walk' }], unused: [], perControl: {} },
+    })
+    const row = md.split('\n').find((l) => l.startsWith('| 10 |'))!
+    expect(row.split('|').length).toBe(6)
+    expect(row).not.toMatch(/<img|\]\(/)
+    // The full report fence outgrows the backtick run, so "```" inside can't close it.
+    const lines = md.split('\n')
+    const start = lines.findIndex((l) => /^`{3,}text$/.test(l))
+    const ticks = lines[start].slice(0, -'text'.length)
+    expect(ticks.length).toBeGreaterThan(3)
+    const end = lines.indexOf(ticks, start + 1)
+    expect(lines.findIndex((l) => l.startsWith('# injected'))).toBeGreaterThan(start)
+    expect(lines.findLastIndex((l) => l.startsWith('# injected'))).toBeLessThan(end)
+  })
 })
