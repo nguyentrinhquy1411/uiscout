@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
+import type { SnapshotEntry } from './baseline.ts'
 import type { Finding, Graph } from './types.ts'
 
 /*
@@ -20,6 +21,10 @@ export interface GraphViewData {
   /** Shown in the header, e.g. "baseline flowcheck/app.graph.json". */
   label: string
   source: string
+  /** Structural snapshot per screen, keyed "[context] node" or "node". */
+  snapshots?: Record<string, SnapshotEntry[]>
+  /** Screenshot per screen, as a path relative to the page. */
+  screens?: Record<string, string>
 }
 
 export async function renderGraphHtml(data: GraphViewData): Promise<string> {

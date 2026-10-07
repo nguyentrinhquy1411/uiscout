@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 import { existsSync } from 'node:fs'
-import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { loadAdapters, runAdapter } from './adapter.ts'
 import { changedSince, type Selection, selectAffected } from './affected.ts'
-import { compareToBaseline, diffGraphs, isEmptyDiff, loadBaseline, saveBaseline } from './baseline.ts'
+import { compareToBaseline, diffGraphs, isEmptyDiff, loadBaseline, saveBaseline, snapshotFile, type Snapshots } from './baseline.ts'
 import { type FileConfig, loadConfig } from './config.ts'
 import { loadRecordings, type NetworkMode, saveRecordings } from './network.ts'
 import { crawl } from './crawl.ts'
@@ -50,6 +50,7 @@ const USAGE = `Usage: flowcheck check [--url <url>] [options]
                         screens leading to them); falls back to a full run when it can't tell
   --no-rules            Skip *.rules.ts invariants and *.intent.md coverage
   --open                Open the graph page in the browser when the run ends
+  --no-screenshots      Don't screenshot screens for the graph page
   --headed              Show the browser
 
 Contexts (personas with setup steps) are configured in the settings file only.
@@ -86,6 +87,7 @@ async function main() {
       runs: { type: 'string' },
       length: { type: 'string' },
       open: { type: 'boolean', default: false },
+      'no-screenshots': { type: 'boolean', default: false },
       headed: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
@@ -110,15 +112,28 @@ async function main() {
     const candidates = positionals[1] ? [positionals[1]] : [path.join(values.out, 'graph.json'), path.join(values.baseline ?? file.baseline ?? 'flowcheck', 'app.graph.json')]
     const source = candidates.find((f) => existsSync(f))
     if (!source) throw new Error(`no graph found (looked for ${candidates.join(', ')}): run flowcheck check first`)
-    const findingsFile = path.join(path.dirname(source), 'findings.json')
+    const dir = path.dirname(source)
+    const findingsFile = path.join(dir, 'findings.json')
     const findings = existsSync(findingsFile) ? ((JSON.parse(await readFile(findingsFile, 'utf8')) as { findings: Finding[] }).findings) : null
+    // Snapshots: a run directory has snapshots.json; a baseline has snapshots/*.txt.
+    const snapshots: Snapshots = existsSync(path.join(dir, 'snapshots.json'))
+      ? (JSON.parse(await readFile(path.join(dir, 'snapshots.json'), 'utf8')) as Snapshots)
+      : (await loadBaseline(dir)).snapshots
+    const target = path.resolve(values.out, 'graph.html')
+    // Screenshots exist only for runs, next to their graph; paths are relative to the page.
+    const screens: Record<string, string> = {}
+    for (const key of Object.keys(snapshots)) {
+      const shot = path.join(dir, 'screens', snapshotFile(key).replace(/\.txt$/, '.jpg'))
+      if (existsSync(shot)) screens[key] = path.relative(path.dirname(target), shot).split(path.sep).join('/')
+    }
     const html = await renderGraphHtml({
       graph: JSON.parse(await readFile(source, 'utf8')) as Graph,
       findings,
       label: findings ? 'last run' : `baseline ${path.relative(process.cwd(), source)}`,
       source: path.resolve(source),
+      snapshots,
+      screens,
     })
-    const target = path.resolve(values.out, 'graph.html')
     await mkdir(path.dirname(target), { recursive: true })
     await writeFile(target, html)
     process.stdout.write(`Wrote ${path.relative(process.cwd(), target)}\n`)
@@ -234,6 +249,7 @@ async function main() {
     recordings,
     only: selection?.only ?? undefined,
     rules,
+    screenshots: !values['no-screenshots'],
     headed: values.headed,
     log: (line) => process.stderr.write(`  ${line}\n`),
   })
@@ -275,8 +291,18 @@ async function main() {
   await writeFile(path.join(out, 'findings.json'), `${JSON.stringify({ findings: result.findings, skipped: result.skipped, healed: result.healed, restless: result.restless, flaky: result.flaky }, null, 2)}\n`)
   await writeFile(path.join(out, 'report.txt'), `${text}\n`)
   // The graph page, so every run can be looked at: flowcheck graph --open, or --open here.
+  await writeFile(path.join(out, 'snapshots.json'), `${JSON.stringify(result.snapshots, null, 2)}\n`)
+  const screensDir = path.join(out, 'screens')
+  await rm(screensDir, { recursive: true, force: true })
+  await mkdir(screensDir, { recursive: true })
+  const screens: Record<string, string> = {}
+  for (const [key, jpeg] of Object.entries(result.screens)) {
+    const name = snapshotFile(key).replace(/\.txt$/, '.jpg')
+    await writeFile(path.join(screensDir, name), jpeg)
+    screens[key] = `screens/${name}`
+  }
   const graphPage = path.join(out, 'graph.html')
-  await writeFile(graphPage, await renderGraphHtml({ graph: result.graph, findings: result.findings, label: 'last run', source: path.join(out, 'graph.json') }))
+  await writeFile(graphPage, await renderGraphHtml({ graph: result.graph, findings: result.findings, label: 'last run', source: path.join(out, 'graph.json'), snapshots: result.snapshots, screens }))
   if (values.open) openFile(graphPage)
   const markdown = renderMarkdown(result, diffInfo, intent)
   await writeFile(path.join(out, 'report.md'), markdown)

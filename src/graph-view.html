@@ -102,6 +102,27 @@ aside h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; co
 .path { font: 400 12px var(--font-mono); color: var(--muted); margin: 0; padding-left: 18px; }
 .path li { margin: 2px 0; overflow-wrap: anywhere; }
 .empty { color: var(--muted); font-size: 13px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; margin-left: 8px; vertical-align: middle; text-transform: none; letter-spacing: 0; }
+.seg button { font: 500 11.5px var(--font-ui); border: 0; background: var(--surface); color: var(--muted); padding: 3px 9px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--ink); }
+.seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.shotbox { position: relative; width: 100%; aspect-ratio: 1280 / 800; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--bg); }
+.shotbox img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.shotbox svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.shotbox.mode-shot svg, .shotbox.mode-wire img { display: none; }
+.shotbox { cursor: zoom-in; }
+dialog.zoom { width: min(1280px, 94vw); padding: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); }
+dialog.zoom::backdrop { background: rgb(0 0 0 / 0.6); }
+dialog.zoom .bar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); font: 600 13px var(--font-mono); }
+dialog.zoom .bar span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+dialog.zoom .bar button { font: 500 12px var(--font-ui); border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+dialog.zoom .shotbox { border: 0; border-radius: 0; cursor: default; }
+.wf { fill: color-mix(in srgb, var(--accent) 10%, transparent); stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.wf.link { stroke: var(--overlay); fill: color-mix(in srgb, var(--overlay) 10%, transparent); }
+.wf.field { stroke: var(--warn); fill: color-mix(in srgb, var(--warn) 12%, transparent); }
+.wf.other { stroke: var(--muted); fill: transparent; }
+details.snap summary { cursor: pointer; font-size: 12.5px; color: var(--muted); margin: 8px 0 4px; }
+pre.snap { font: 400 11px/1.5 var(--font-mono); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; overflow-x: auto; margin: 0; max-height: 280px; }
 @media (max-width: 860px) {
   html, body { height: auto; }
   .wrap { height: auto; }
@@ -130,6 +151,7 @@ aside h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; co
     <aside id="panel" aria-live="polite"></aside>
   </div>
 </div>
+<dialog class="zoom" id="zoom" aria-label="Screen snapshot"><div class="bar"><span id="zoom-title"></span><button type="button" id="zoom-close">Close (Esc)</button></div><div id="zoom-body"></div></dialog>
 <script>
 const DATA = /*__FLOWCHECK_DATA__*/null
 
@@ -286,6 +308,7 @@ function select(id) {
     html += `<h3>${fs.length} finding${fs.length === 1 ? '' : 's'}</h3>`
     for (const f of fs.slice(0, 40)) html += `<div class="finding ${esc(f.severity)}"><span class="o">${esc(f.oracle)} · ${esc(f.severity)}</span>${esc(f.message)}<span class="at">${esc(f.at)}</span></div>`
   }
+  html += snapshotHtml(id)
   html += `<h3>How to get here</h3>`
   html += n.path.length ? `<ol class="path">${n.path.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>` : `<p class="empty">The entry: open the URL.</p>`
   const groups = new Map()
@@ -311,6 +334,46 @@ function select(id) {
   panel.innerHTML = html
   for (const b of panel.querySelectorAll('[data-go]')) b.addEventListener('click', () => { select(b.dataset.go); nodeEls.get(b.dataset.go)?.scrollIntoView?.({ block: 'center', inline: 'center' }) })
 }
+
+// The screen as flowcheck saw it on arrival: the screenshot, the structural snapshot
+// drawn over it (one box per control, coloured by role), and the snapshot as text.
+let shotMode = 'both'
+const ROLE_CLASS = { button: '', link: 'link', textbox: 'field', combobox: 'field', checkbox: 'field', switch: 'field', radio: 'field', slider: 'field' }
+function snapshotHtml(id) {
+  const all = DATA.snapshots ?? {}
+  const keys = Object.keys(all).filter((k) => k === id || k.endsWith(`] ${id}`))
+  if (!keys.length) return ''
+  const ctx = document.getElementById('ctx').value
+  const key = keys.find((k) => ctx !== '*' && k.startsWith(`[${ctx}] `)) ?? keys[0]
+  const entries = all[key]
+  const shot = DATA.screens?.[key]
+  const mode = shot ? shotMode : 'wire'
+  const boxes = entries.map((e) => `<rect class="wf ${ROLE_CLASS[e.role] ?? (e.role === 'tab' || e.role.startsWith('menuitem') || e.role === 'option' ? '' : 'other')}" x="${e.x}" y="${e.y}" width="${Math.max(e.w, 2)}" height="${Math.max(e.h, 2)}" rx="3"><title>${esc(e.role)} "${esc(e.name)}"</title></rect>`).join('')
+  const lines = entries.map((e) => `${e.role} ${JSON.stringify(e.name)}${e.parents ? ` @${e.parents}` : ''} ${e.x},${e.y} ${e.w}x${e.h}${e.testId ? ` #${e.testId}` : ''}`).join('\n')
+  const seg = shot
+    ? `<span class="seg" role="group" aria-label="Snapshot view">${[['both', 'Both'], ['shot', 'Screenshot'], ['wire', 'Wireframe']].map(([m, l]) => `<button type="button" data-mode="${m}" aria-pressed="${m === mode}">${l}</button>`).join('')}</span>`
+    : ''
+  return `<h3>Snapshot${keys.length > 1 ? ` · ${esc(key.match(/^\[([^\]]+)\]/)?.[1] ?? '')}` : ''}${seg}</h3>
+    <div class="shotbox mode-${mode}">${shot ? `<img src="${esc(shot)}" alt="Screenshot of ${esc(key)}">` : ''}<svg viewBox="0 0 1280 800" preserveAspectRatio="none" aria-hidden="true">${boxes}</svg></div>
+    <details class="snap"><summary>${entries.length} controls${shot ? '' : ' (no screenshot: a baseline keeps only the structure)'}</summary><pre class="snap">${esc(lines)}</pre></details>`
+}
+panel.addEventListener('click', (ev) => {
+  const b = ev.target.closest('[data-mode]')
+  if (b) {
+    shotMode = b.dataset.mode
+    select(selected)
+    return
+  }
+  // Click the snapshot to see it full size; hover a box there to read the control's name.
+  const box = ev.target.closest('.shotbox')
+  if (!box) return
+  const zoom = document.getElementById('zoom')
+  document.getElementById('zoom-title').textContent = selected
+  document.getElementById('zoom-body').replaceChildren(box.cloneNode(true))
+  zoom.showModal()
+})
+document.getElementById('zoom-close').addEventListener('click', () => document.getElementById('zoom').close())
+document.getElementById('zoom').addEventListener('click', (ev) => { if (ev.target.id === 'zoom') ev.target.close() })
 
 const contexts = [...new Set(graph.nodes.flatMap((n) => n.contexts))].sort()
 const ctxSelect = document.getElementById('ctx')

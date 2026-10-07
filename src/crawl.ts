@@ -44,6 +44,12 @@ export interface CrawlOptions extends MonitorOptions {
   fastForwardMs?: number
   /** Run axe on every node. */
   a11y?: boolean
+  /**
+   * Screenshot every screen on arrival (JPEG), for the graph page. On by default;
+   * they show whatever the screen shows, so keep them out of shared artifacts when
+   * the app displays personal data.
+   */
+  screenshots?: boolean
   /** live: the real backend. record: real backend, responses kept. replay: recordings only (§6). */
   network?: NetworkMode
   /** Read in replay, filled in record. */
@@ -80,6 +86,8 @@ export interface CrawlResult {
   flaky: string[]
   /** Structural snapshot of every node, keyed like findings: "[context] node". */
   snapshots: Snapshots
+  /** JPEG of each screen on arrival, keyed like snapshots. */
+  screens: Record<string, Buffer>
   /** The steps that reach each node, keyed like snapshots. */
   replays: Record<string, Step[]>
   /** Rules checked, and how many paths broke each. */
@@ -148,6 +156,7 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
   const restless: string[] = []
   const flaky: string[] = []
   const snapshots: Snapshots = {}
+  const screens: Record<string, Buffer> = {}
   /** How each node was reached, per context: what an affected-only run replays. */
   const replays: Record<string, Step[]> = {}
   let steps = 0
@@ -352,6 +361,10 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
       // Judge the screen itself once, on arrival.
       const targets = await page.evaluate(collectElements)
       snapshots[`${prefix}${node}`] = snapshotOf(targets)
+      if (options.screenshots !== false) {
+        const shot = await page.screenshot({ type: 'jpeg', quality: 60 }).catch(() => null)
+        if (shot) screens[`${prefix}${node}`] = shot
+      }
       const files = targets.flatMap((t) => (t.source ? [t.source.replace(/:\d+$/, '')] : []))
       if (files.length) {
         const n = nodes.get(node)!
@@ -520,6 +533,7 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
     restless,
     flaky,
     snapshots,
+    screens,
     replays,
     ruleResults,
   }

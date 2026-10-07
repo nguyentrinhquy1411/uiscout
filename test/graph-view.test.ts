@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { chromium } from 'playwright'
@@ -34,7 +34,10 @@ describe('graph page', () => {
   it('renders every screen, marks the ones with errors, and inspects a screen on click', async () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'fc-graph-'))
     const file = path.join(dir, 'graph.html')
-    await writeFile(file, await renderGraphHtml({ graph: run.graph, findings: run.findings, label: 'last run', source: 'x' }))
+    // One real screenshot next to the page, the way check writes them.
+    await mkdir(path.join(dir, 'screens'), { recursive: true })
+    await writeFile(path.join(dir, 'screens', 'broken.jpg'), run.screens['/broken.html'])
+    await writeFile(file, await renderGraphHtml({ graph: run.graph, findings: run.findings, label: 'last run', source: 'x', snapshots: run.snapshots, screens: { '/broken.html': 'screens/broken.jpg' } }))
     const browser = await chromium.launch()
     try {
       const page = await browser.newPage()
@@ -46,6 +49,13 @@ describe('graph page', () => {
       expect(await page.locator('.node.bad').count()).toBeGreaterThan(0)
       await page.getByRole('button', { name: 'Screen /broken.html', exact: true }).click()
       await expect.poll(() => page.locator('#panel').innerText()).toContain('kaboom')
+      // The snapshot: the screenshot loads, one box per control, and the view toggles.
+      const shot = page.locator('.shotbox img')
+      await expect.poll(() => shot.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0)
+      expect(await page.locator('.shotbox rect.wf').count()).toBe(run.snapshots['/broken.html'].length)
+      await page.getByRole('button', { name: 'Wireframe' }).click()
+      expect(await page.locator('.shotbox.mode-wire').count()).toBe(1)
+      expect(await page.locator('pre.snap').textContent()).toContain('button "Explode"')
     } finally {
       await browser.close()
     }
