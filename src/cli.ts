@@ -10,6 +10,7 @@ import { type FileConfig, loadConfig } from './config.ts'
 import { loadRecordings, type NetworkMode, saveRecordings } from './network.ts'
 import { crawl } from './crawl.ts'
 import { fuzz } from './fuzz.ts'
+import { startMcp } from './mcp.ts'
 import { openFile, renderGraphHtml } from './graph-view.ts'
 import { type IntentSummary, loadIntent, loadRules, summarizeIntent } from './intent.ts'
 import { renderDiff, renderMarkdown, renderText } from './report.ts'
@@ -26,6 +27,7 @@ const USAGE = `Usage: uiscout check [--url <url>] [options]
        uiscout diff <before.graph.json> <after.graph.json>
        uiscout graph [<graph.json>] [--open] [--out <dir>]
        uiscout fuzz [--url <url>] [--seed <n>] [--runs <n>] [--length <n>]
+       uiscout mcp [--dir <project>]
        uiscout adapters [--url <url>] [--dir <dir>] [--seed <n>] [--runs <n>] [--length <n>]
 
   --config <file>       Settings file (default ./uiscout.config.json when it exists)
@@ -110,6 +112,12 @@ async function main() {
   const configPath = values.config ?? (existsSync('uiscout.config.json') ? 'uiscout.config.json' : undefined)
   const file: FileConfig = configPath ? await loadConfig(configPath) : {}
   const url = values.url ?? file.url
+  if (positionals[0] === 'mcp') {
+    // The MCP server for coding agents (§11): stdio, no model, runs until the client disconnects.
+    await startMcp(path.resolve(values.dir ?? '.'))
+    return
+  }
+
   if (positionals[0] === 'graph') {
     // The graph page (no browser run): the last run's graph with its findings, or a baseline.
     const candidates = positionals[1] ? [positionals[1]] : [path.join(values.out, 'graph.json'), path.join(values.baseline ?? file.baseline ?? 'uiscout', 'app.graph.json')]
@@ -292,7 +300,7 @@ async function main() {
   await mkdir(out, { recursive: true })
   const text = renderText(result, diffInfo, intent)
   await writeFile(path.join(out, 'graph.json'), `${JSON.stringify(result.graph, null, 2)}\n`)
-  await writeFile(path.join(out, 'findings.json'), `${JSON.stringify({ findings: result.findings, skipped: result.skipped, healed: result.healed, restless: result.restless, flaky: result.flaky }, null, 2)}\n`)
+  await writeFile(path.join(out, 'findings.json'), `${JSON.stringify({ findings: result.findings, skipped: result.skipped, healed: result.healed, restless: result.restless, flaky: result.flaky, ruleResults: result.ruleResults }, null, 2)}\n`)
   await writeFile(path.join(out, 'report.txt'), `${text}\n`)
   // The graph page, so every run can be looked at: uiscout graph --open, or --open here.
   await writeFile(path.join(out, 'snapshots.json'), `${JSON.stringify(result.snapshots, null, 2)}\n`)

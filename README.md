@@ -109,6 +109,14 @@ export default {
 
 `uiscout adapters --url … --seed 11 --runs 6 --length 12` runs every `*.adapter.ts`. The runner creates `window.__uiscout` before the app loads, so apps publish hooks only when it's there. [`examples/calendar/timegrid.adapter.ts`](examples/calendar/timegrid.adapter.ts) drives the calendar app's week grid (move, resize, zoom) with five invariants: an event never ends before it starts; each block is drawn where its times say, within 2 px, on its day; a move keeps the duration and lands on the 15-minute grid; a resize keeps the start and at least 15 minutes; zoom changes no data. On the real app 72 random actions passed; with a planted bug (a move into the afternoon drops 15 minutes, reachable only by dragging) it failed in 3 of 4 runs, each shrunk to one move.
 
+## MCP server for coding agents (M5)
+
+`uiscout mcp` serves the project to Claude Code, Cursor or Copilot over stdio, with no model and no API key. Agents read the graph, findings, uncovered controls and intent coverage, walk one control in a real browser (`run_edge`), and propose edges and rules. Proposals are quarantined in `uiscout/proposals.json`: an edge becomes `verified` only when the runner observes it, a rule only when a developer adds it in a pull request. See [docs/guide/12-mcp.md](docs/guide/12-mcp.md).
+
+```sh
+claude mcp add uiscout -- pnpm exec uiscout mcp
+```
+
 ## Network modes
 
 | `--mode` | Backend | Use |

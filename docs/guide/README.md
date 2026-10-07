@@ -17,6 +17,7 @@ The guide follows the order you'll use it in: install, first run, reading the re
 | 9 | [Widget adapters](09-adapters.md) | You have drag-and-drop, calendars, gantts or canvas widgets |
 | 10 | [Vite plugin and affected-only runs](10-plugin-affected.md) | You want pull requests to run fast |
 | 11 | [Running in CI](11-ci.md) | You're adding it to GitHub Actions |
+| 12 | [MCP server for coding agents](12-mcp.md) | You want Claude Code, Cursor or Copilot to read the graph and propose tests |
 | 13 | [Safety and sensitive data](13-safety.md) | Before running against an app with real data |
 | 14 | [Troubleshooting](14-troubleshooting.md) | Results look wrong, noisy, or a command fails |
 | — | [CLI reference](cli-reference.md) | You need every command and flag |

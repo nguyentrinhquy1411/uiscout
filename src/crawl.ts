@@ -64,6 +64,11 @@ export interface CrawlOptions extends MonitorOptions {
   only?: Record<string, Step[]>
   /** Invariants (oracle B) checked on every path walked. */
   rules?: Rule[]
+  /**
+   * Act only on the controls this accepts (the others are left alone, not reported
+   * as skipped): how the MCP server walks one proposed edge.
+   */
+  elementFilter?: (fp: Fingerprint, elementId: string) => boolean
   log?: (line: string) => void
 }
 
@@ -407,6 +412,7 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
       for (const target of targets) {
         const fp = fingerprintOf(target)
         const elId = elementId(node, fp)
+        if (options.elementFilter && !options.elementFilter(fp, elId)) continue
         if (!elements.has(elId)) elements.set(elId, { id: elId, node, role: fp.role, name: fp.name, fingerprint: fp })
         const safety = safetyOf(fp)
         // With every request served from recordings, nothing a destructive control sends

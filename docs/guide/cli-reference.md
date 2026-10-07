@@ -6,6 +6,7 @@ uiscout graph    [<graph.json>] [--open] [--out <dir>]
 uiscout diff     <before.graph.json> <after.graph.json>
 uiscout fuzz     [--url <url>] [--seed <n>] [--runs <n>] [--length <n>]
 uiscout adapters [--url <url>] [--dir <dir>] [--seed <n>] [--runs <n>] [--length <n>]
+uiscout mcp      [--dir <project>]
 uiscout --help
 ```
 
@@ -80,6 +81,10 @@ Writes `fuzz.json` to `--out`.
 | `--runs <n>` | 5 | Runs per adapter |
 | `--length <n>` | 20 | Actions per run |
 | `--url`, `--now` | from config | As in `check` |
+
+## `uiscout mcp`
+
+Starts the MCP server on stdio for the project in `--dir` (default: the current directory). Runs until the client disconnects; logs go to stderr. See [MCP server](12-mcp.md).
 
 ## Exit codes
 
