@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import type { BrowserContext, Request, Route } from 'playwright'
-import { redactBody } from './redact.ts'
+import { isSensitiveKey, redactBody, redactText } from './redact.ts'
 
 /*
  * Network modes (design doc §6). `record` walks against a real backend and keeps
@@ -41,10 +41,17 @@ export const NO_RECORDING = 'x-flowcheck-no-recording'
 const API_TYPES = new Set(['fetch', 'xhr', 'eventsource', 'ping'])
 const STATIC_TYPES = new Set(['script', 'stylesheet', 'image', 'font', 'media', 'manifest', 'texttrack'])
 
-/** Same-origin calls keep a short key; calls to another origin include it. */
+/**
+ * Same-origin calls keep a short key; calls to another origin include it. The key
+ * is written to disk, so query values are redacted here — and replay builds the
+ * same redacted key, so matching still works.
+ */
 export function requestKey(req: Request, origin: string): string {
   const url = new URL(req.url())
-  const query = [...url.searchParams].sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${k}=${v}`).join('&')
+  const query = [...url.searchParams]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}=${isSensitiveKey(k) ? '[redacted]' : redactText(v)}`)
+    .join('&')
   const where = url.origin === origin ? url.pathname : `${url.origin}${url.pathname}`
   return `${req.method()} ${where}${query ? `?${query}` : ''}`
 }

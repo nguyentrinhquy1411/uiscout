@@ -14,23 +14,39 @@ export function redactText(s: string): string {
   return s.replace(EMAIL, '[email]').replace(TOKEN, '[token]')
 }
 
+export const isSensitiveKey = (key: string) => SENSITIVE_KEY.test(key)
+
 export function redactJson(value: unknown, key = ''): unknown {
-  if (key && SENSITIVE_KEY.test(key) && value !== null && typeof value !== 'object') return '[redacted]'
+  // The whole value under a sensitive key, objects and arrays included: "address": { street… }.
+  if (key && SENSITIVE_KEY.test(key) && value !== null && value !== undefined) return '[redacted]'
   if (typeof value === 'string') return redactText(value)
   if (Array.isArray(value)) return value.map((v) => redactJson(v))
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, redactJson(v, k)]))
   return value
 }
 
-/** A recorded response body, redacted according to its type. Binary bodies pass untouched. */
+/** key=value&… with sensitive keys hidden and every value scrubbed. */
+export function redactForm(text: string): string {
+  const params = new URLSearchParams(text)
+  for (const [k, v] of [...params]) params.set(k, SENSITIVE_KEY.test(k) ? '[redacted]' : redactText(v))
+  return params.toString()
+}
+
+const BINARY = /^(image|audio|video|font)\/|octet-stream|zip|pdf|protobuf|wasm/
+
+/**
+ * A recorded response body, redacted. Whatever parses as JSON is treated as JSON,
+ * whatever its content type claims (or doesn't); forms as forms; any other text
+ * as text. Only bodies declared binary pass untouched.
+ */
 export function redactBody(body: Buffer, contentType: string): Buffer {
-  if (/json/.test(contentType)) {
-    try {
-      return Buffer.from(JSON.stringify(redactJson(JSON.parse(body.toString('utf8')))))
-    } catch {
-      return Buffer.from(redactText(body.toString('utf8')))
-    }
+  if (BINARY.test(contentType)) return body
+  const text = body.toString('utf8')
+  try {
+    return Buffer.from(JSON.stringify(redactJson(JSON.parse(text))))
+  } catch {
+    // Not JSON.
   }
-  if (/^text\/|xml|javascript|html/.test(contentType)) return Buffer.from(redactText(body.toString('utf8')))
-  return body
+  if (/x-www-form-urlencoded/.test(contentType)) return Buffer.from(redactForm(text))
+  return Buffer.from(redactText(text))
 }
