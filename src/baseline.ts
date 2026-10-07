@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { similarity } from './identity.ts'
+import { redactText } from './redact.ts'
 import type { Finding, Fingerprint, Graph, GraphEdge, RawElement } from './types.ts'
 
 /*
@@ -32,7 +33,7 @@ const round = (n: number) => Math.round(n / 4) * 4
 
 export function snapshotOf(elements: RawElement[]): SnapshotEntry[] {
   return elements
-    .map((el) => ({ role: el.role, name: el.name, testId: el.testId, parents: el.parents, x: round(el.box.x), y: round(el.box.y), w: round(el.box.w), h: round(el.box.h) }))
+    .map((el) => ({ role: el.role, name: redactText(el.name), testId: el.testId, parents: el.parents, x: round(el.box.x), y: round(el.box.y), w: round(el.box.w), h: round(el.box.h) }))
     .sort((a, b) => a.y - b.y || a.x - b.x || a.name.localeCompare(b.name))
 }
 

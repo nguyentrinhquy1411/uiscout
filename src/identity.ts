@@ -1,3 +1,4 @@
+import { redactText } from './redact.ts'
 import type { Fingerprint, RawElement, Safety } from './types.ts'
 
 /*
@@ -13,7 +14,8 @@ export function fingerprintOf(el: RawElement): Fingerprint {
   const cy = el.box.y + el.box.h / 2
   const col = Math.min(3, Math.max(0, Math.floor((cx / VIEWPORT.w) * 4)))
   const row = Math.min(3, Math.max(0, Math.floor((cy / VIEWPORT.h) * 4)))
-  return { tag: el.tag, role: el.role, name: el.name, testId: el.testId, parents: el.parents, cell: `${row}${col}` }
+  // Redacted here, once: the name flows into element IDs, the graph and snapshots on disk.
+  return { tag: el.tag, role: el.role, name: redactText(el.name), testId: el.testId, parents: el.parents, cell: `${row}${col}` }
 }
 
 const slug = (s: string) =>

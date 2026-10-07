@@ -125,6 +125,7 @@ async function main() {
   if (network === 'record') {
     await mkdir(baselineDir, { recursive: true })
     await saveRecordings(recordingsFile, recordings)
+    process.stderr.write(`  recorded ${Object.keys(recordings).length} calls to ${path.relative(process.cwd(), recordingsFile)}: emails, tokens and sensitive keys are redacted, but review the file before committing it\n`)
   }
   const against = path.relative(process.cwd(), path.join(baselineDir, 'app.graph.json'))
   let diffInfo: Parameters<typeof renderText>[1]
