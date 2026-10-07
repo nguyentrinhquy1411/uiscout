@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { compareToBaseline, diffGraphs, isEmptyDiff, loadBaseline, saveBaseline } from './baseline.ts'
 import { type FileConfig, loadConfig } from './config.ts'
 import { crawl } from './crawl.ts'
-import { renderDiff, renderText } from './report.ts'
+import { renderDiff, renderMarkdown, renderText } from './report.ts'
 import type { Graph } from './types.ts'
 
 /*
@@ -21,7 +21,7 @@ const USAGE = `Usage: flowcheck check [--url <url>] [options]
 
   --config <file>       Settings file (default ./flowcheck.config.json when it exists)
   --url <url>           Entry URL of a running app
-  --out <dir>           Where to write graph.json, findings.json, report.txt (default .flowcheck)
+  --out <dir>           Where to write graph.json, findings.json, report.txt, report.md (default .flowcheck)
   --depth <n>           Actions deep from the entry (default 2)
   --max-steps <n>       Total actions (default 250)
   --seeds <paths>       Comma-separated routes no link reaches, e.g. "/legacy,/404"
@@ -132,6 +132,10 @@ async function main() {
   await writeFile(path.join(out, 'graph.json'), `${JSON.stringify(result.graph, null, 2)}\n`)
   await writeFile(path.join(out, 'findings.json'), `${JSON.stringify({ findings: result.findings, skipped: result.skipped, healed: result.healed, restless: result.restless, flaky: result.flaky }, null, 2)}\n`)
   await writeFile(path.join(out, 'report.txt'), `${text}\n`)
+  const markdown = renderMarkdown(result, diffInfo)
+  await writeFile(path.join(out, 'report.md'), markdown)
+  // In GitHub Actions the run summary shows the same report without any token.
+  if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, markdown)
   const accepted = values.update ? `, accepted as baseline in ${path.relative(process.cwd(), baselineDir) || '.'}/` : ''
   process.stdout.write(`${text}\n\nWrote ${path.relative(process.cwd(), out) || '.'}/${accepted} in ${((Date.now() - started) / 1000).toFixed(1)}s\n`)
   process.exit(result.findings.some((f) => f.severity === 'error') ? 1 : 0)

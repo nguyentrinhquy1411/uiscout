@@ -1,0 +1,41 @@
+# Copy to .github/workflows/flowcheck.yml in the app's repo.
+# Walks the built app on every pull request, compares it with the committed
+# baseline (flowcheck/), and keeps one comment on the PR up to date.
+name: flowcheck
+on: pull_request
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm build
+
+      - name: Serve the build
+        run: |
+          pnpm preview --port 4173 --strictPort &
+          for i in $(seq 1 30); do curl -sf http://localhost:4173/ >/dev/null && break; sleep 1; done
+
+      - name: flowcheck
+        run: pnpm exec flowcheck check --url http://localhost:4173/
+
+      - name: Comment on the pull request
+        if: always() && hashFiles('.flowcheck/report.md') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment ${{ github.event.pull_request.number }} --edit-last --create-if-none --body-file .flowcheck/report.md
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: flowcheck
+          path: .flowcheck/

@@ -27,6 +27,20 @@ Settings can live in `flowcheck.config.json` (flags override it). Contexts are c
 
 Setup steps: `goto` (full load), `route` (in-app, through the history API, so in-memory sessions survive), `click` (button or link by accessible name), `fill` (field by label or placeholder), `press`, `eval`. They run after every page load.
 
+## Baselines and CI (M2)
+
+`flowcheck check --update` accepts a run: it writes `flowcheck/app.graph.json` (the graph, a lockfile) and `flowcheck/snapshots/<node>.txt` (one line per control: role, name, landmark, position). Commit both. Every later run is compared to them:
+
+| Change | Severity |
+| --- | --- |
+| A control is gone, or its role or name changed | Error |
+| An action now leads to a different screen | Error (transition) |
+| Screens or edges added or removed without updating `flowcheck/` | Error (stale lockfile) |
+| A control moved or resized by more than 16 px | Warning |
+| A new control | Info |
+
+`flowcheck diff a.json b.json` compares any two graphs. Each run also writes `report.md` for the pull request; see [docs/ci.md](docs/ci.md) and [examples/github-workflow.yml](examples/github-workflow.yml).
+
 ## What it checks (oracle A)
 
 | Check | Fails when |

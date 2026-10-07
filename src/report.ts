@@ -85,3 +85,45 @@ function section(lines: string[], title: string, findings: Finding[]): void {
 }
 
 const distinct = (findings: Finding[]) => new Set(findings.map((f) => `${f.oracle}|${f.message}`)).size
+
+/** Marks the comment so CI can find and update it instead of posting a new one each push. */
+export const COMMENT_MARKER = '<!-- flowcheck-report -->'
+const MAX_MD_ITEMS = 10
+
+/**
+ * The pull request comment (§10): a verdict line, the graph diff and the errors up
+ * front, the full text report folded underneath. Short and true.
+ */
+export function renderMarkdown(result: CrawlResult, diff?: { diff: GraphDiff; against: string }): string {
+  const errors = result.findings.filter((f) => f.severity === 'error')
+  const warnings = result.findings.filter((f) => f.severity === 'warning')
+  const e = distinct(errors)
+  const w = distinct(warnings)
+  const verdict = e ? `❌ ${e} error${e === 1 ? '' : 's'}` : '✅ no errors'
+  const md: string[] = [
+    COMMENT_MARKER,
+    `### flowcheck: ${verdict}${w ? `, ${w} warning${w === 1 ? '' : 's'}` : ''}`,
+    '',
+    `${result.graph.nodes.length} screens, ${result.graph.edges.length} edges, ${result.steps} steps walked.${result.flaky.length ? ` ${result.flaky.length} flaky (not blocking).` : ''}`,
+    '',
+  ]
+  if (diff) {
+    const changed = renderDiff(diff.diff, diff.against).slice(1).filter((l) => l.trim() && l.trim() !== '(no change)')
+    if (changed.length) md.push('**Graph changes**', '', '```diff', ...changed.map((l) => l.replace(/^ {2}/, '').replace(/^~/, '!')), '```', '')
+  }
+  const byMessage = new Map<string, Finding[]>()
+  for (const f of errors) byMessage.set(`${f.oracle}|${f.message}`, [...(byMessage.get(`${f.oracle}|${f.message}`) ?? []), f])
+  if (byMessage.size) {
+    md.push('**Errors**', '')
+    for (const list of [...byMessage.values()].slice(0, MAX_MD_ITEMS)) {
+      const { oracle, message, at } = list[0]
+      md.push(`- **${oracle}** — ${escapeMd(message)}  \n  <sub>at \`${at}\`${list.length > 1 ? ` and ${list.length - 1} more` : ''}</sub>`)
+    }
+    if (byMessage.size > MAX_MD_ITEMS) md.push(`- … ${byMessage.size - MAX_MD_ITEMS} more`)
+    md.push('')
+  }
+  md.push('<details><summary>Full report</summary>', '', '```text', renderText(result, diff), '```', '', '</details>')
+  return `${md.join('\n')}\n`
+}
+
+const escapeMd = (s: string) => s.replace(/([<>*_`|])/g, '\\$1')
