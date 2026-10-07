@@ -27,7 +27,9 @@ export async function renderGraphHtml(data: GraphViewData): Promise<string> {
   // JSON inside <script>: escape "<" so a name like "</script>" can't end the block.
   const json = JSON.stringify(data).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')
   if (!template.includes(MARKER)) throw new Error('graph-view.html is missing its data marker')
-  return template.replace(MARKER, json)
+  // A function, not a string: a replacement string would expand "$'" and "$`" (the text
+  // after or before the marker), letting a name like "$'<img onerror=…>" inject markup.
+  return template.replace(MARKER, () => json)
 }
 
 /** Opens a file with the system's default app (the browser, for .html). */

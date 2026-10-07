@@ -23,6 +23,14 @@ describe('graph page', () => {
     expect(html).toContain('\\u003c/script>')
   })
 
+  it('keeps replacement patterns in names literal', async () => {
+    const graph = { ...run.graph, elements: [...run.graph.elements, { id: 'y', node: '/', role: 'button', name: "$'<img src=x onerror=alert(1)>$`$&", fingerprint: run.graph.elements[0].fingerprint }] }
+    const html = await renderGraphHtml({ graph, findings: [], label: 'test', source: 'x' })
+    expect(html).not.toContain('<img src=x')
+    expect(html).toContain("$'\\u003cimg src=x onerror=alert(1)>$`$&")
+    expect(html.split('</script>').length).toBe(2)
+  })
+
   it('renders every screen, marks the ones with errors, and inspects a screen on click', async () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'fc-graph-'))
     const file = path.join(dir, 'graph.html')
