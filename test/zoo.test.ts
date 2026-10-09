@@ -17,7 +17,7 @@ let result: CrawlResult
 
 beforeAll(async () => {
   zoo = await startZoo()
-  result = await crawl({ url: zoo.url, maxDepth: 2, settleMs: 150, seeds: ['/hidden.html', '/redirect.html'] })
+  result = await crawl({ url: zoo.url, maxDepth: 2, settleMs: 150, seeds: ['/hidden.html', '/redirect.html', '/long.html'] })
 }, 120_000)
 
 afterAll(() => zoo?.close())
@@ -73,6 +73,14 @@ describe('oracle A on the broken page', () => {
 })
 
 describe('reaching more of the app', () => {
+  it('walks a control below the fold, as a user who scrolls would', () => {
+    expect(on('/long.html').some((f) => f.oracle === 'script' && f.at.includes('add-quick-link'))).toBe(true)
+  })
+
+  it('leaves a control clipped by a non-scrolling box alone', () => {
+    expect(messages('/long.html').join('\n')).not.toContain('a clipped control was clicked')
+  })
+
   it('walks a seeded route no link leads to', () => {
     expect(result.graph.nodes.map((n) => n.id)).toContain('/hidden.html')
     expect(messages('secret')).toContain('script: Uncaught Error: hidden bug')

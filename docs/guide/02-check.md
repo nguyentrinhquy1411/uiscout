@@ -5,7 +5,7 @@
 ## How it walks
 
 1. Opens the URL in Chromium (1280×800 viewport, `en-US` locale, `Asia/Ho_Chi_Minh` time zone, animations off).
-2. On each screen, lists every visible interactive element. While a dialog or menu is open, only the elements inside it.
+2. On each screen, lists every interactive element a user can see or scroll to (below the fold, in a scrolling panel; not one cut off by a non-scrolling box). While a dialog or menu is open, only the elements inside it. Layout checks judge only what is in view.
 3. Acts on each element:
    - buttons, links, tabs, menu items, checkboxes and switches are **clicked**;
    - text fields get a value that fits them (an email, a number in range, a date: see [what gets typed](03-config.md#what-gets-typed)), then **Enter**;

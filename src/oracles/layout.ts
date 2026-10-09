@@ -15,7 +15,7 @@ export interface LayoutIssue {
 /** `allowOverlap`: a selector for controls that overlap by design (stacked calendar events). */
 export function checkLayout(allowOverlap: string): LayoutIssue[] {
   const issues: LayoutIssue[] = []
-  const els = [...document.querySelectorAll<HTMLElement>('[data-scout-i]')]
+  const els = [...document.querySelectorAll<HTMLElement>('[data-scout-box]')]
   const label = (el: Element) => (el.getAttribute('aria-label') || (el as HTMLElement).innerText || el.tagName).replace(/\s+/g, ' ').trim().slice(0, 40)
   const boxOf = (el: HTMLElement) => {
     const [x, y, w, h] = (el.dataset.scoutBox ?? '0,0,0,0').split(',').map(Number)

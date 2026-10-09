@@ -38,6 +38,7 @@ jobs:
         if: always()
         with:
           name: uiscout
+          include-hidden-files: true   # .uiscout/ starts with a dot: skipped otherwise
           # Screenshots stay out (they show whatever the app shows); CI doesn't take them by default anyway.
           path: |
             .uiscout/

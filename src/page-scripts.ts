@@ -90,9 +90,46 @@ export function collectElements(): RawElement[] {
       }
     }
     if (right - left < 1 || bottom - top < 1) return null
+    return shown(el) ? { x: left, y: top, w: right - left, h: bottom - top } : null
+  }
+
+  const shown = (el: Element) => {
     const style = getComputedStyle(el)
-    if (style.visibility === 'hidden' || style.display === 'none' || Number(style.opacity) <= 0.05) return null
-    return { x: left, y: top, w: right - left, h: bottom - top }
+    return !(style.visibility === 'hidden' || style.display === 'none' || Number(style.opacity) <= 0.05)
+  }
+
+  /**
+   * Below the fold: out of view only because the page or a vertically scrolling
+   * ancestor hasn't been scrolled to it, which a user does without thinking.
+   * Anything cut off sideways or by a non-scrolling clip stays unreachable.
+   */
+  const scrolledAway = (el: Element): boolean => {
+    const r = el.getBoundingClientRect()
+    let left = Math.max(r.left, 0)
+    let right = Math.min(r.right, innerWidth)
+    let top = r.top
+    let bottom = r.bottom
+    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+      const ps = getComputedStyle(p)
+      if (ps.position === 'fixed') break
+      if (ps.overflowX !== 'visible') {
+        const pr = p.getBoundingClientRect()
+        left = Math.max(left, pr.left)
+        right = Math.min(right, pr.right)
+      }
+      if (ps.overflowY === 'visible') continue
+      const pr = p.getBoundingClientRect()
+      if (/auto|scroll|overlay/.test(ps.overflowY)) {
+        // Scrolling this box brings the element anywhere in its window; outer clips judge that window.
+        if (bottom - top < 1) return false
+        top = pr.top
+        bottom = pr.bottom
+      } else {
+        top = Math.max(top, pr.top)
+        bottom = Math.min(bottom, pr.bottom)
+      }
+    }
+    return right - left >= 1 && bottom - top >= 1 && r.width > 2 && r.height > 2 && shown(el)
   }
 
   // An open overlay (modal, menu, popover) owns the screen: only its controls are reachable.
@@ -109,14 +146,18 @@ export function collectElements(): RawElement[] {
   for (const el of scope.querySelectorAll(SELECTOR)) {
     // Hidden from users on purpose: a native input behind a custom checkbox, an inert background.
     if (el.closest('[aria-hidden=true],[inert]')) continue
-    const r = visibleRect(el)
-    if (!r || r.w <= 2 || r.h <= 2) continue
+    const seen = visibleRect(el)
+    const inView = seen && seen.w > 2 && seen.h > 2
+    if (!inView && !scrolledAway(el)) continue
     // A control nested in another (an icon button inside a link) is one target, not two.
     if (el.parentElement?.closest(SELECTOR) && !el.matches('input,select,textarea')) continue
     const i = out.length
     el.setAttribute('data-scout-i', String(i))
     // The visible part, for the layout checks that run next in the same state.
-    el.setAttribute('data-scout-box', `${r.x},${r.y},${r.w},${r.h}`)
+    // A control below the fold gets none: it is walked, not judged for layout here.
+    const b = el.getBoundingClientRect()
+    const r = inView ? seen : { x: b.left, y: b.top, w: b.width, h: b.height }
+    if (inView) el.setAttribute('data-scout-box', `${r.x},${r.y},${r.w},${r.h}`)
     out.push({
       i,
       tag: el.tagName.toLowerCase(),

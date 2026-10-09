@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Long</title>
+<style>
+  body { margin: 0; }
+  .shell { display: flex; height: 100vh; }
+  .shell main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+  .scroller { flex: 1; min-height: 0; overflow-y: auto; }
+  .tall { height: 2000px; }
+  .clip { height: 40px; overflow: hidden; }
+</style></head>
+<body>
+  <div class="shell">
+    <main><div class="scroller">
+      <h1>A dashboard taller than the window</h1>
+      <div class="tall"></div>
+      <button type="button" id="below">Add quick link</button>
+      <div class="clip"><div style="height: 40px"></div><button type="button" id="cut">Cut off</button></div>
+    </div></main>
+  </div>
+  <script>
+    document.getElementById('below').onclick = () => { const links = []; links[links.length].url }
+    document.getElementById('cut').onclick = () => { throw new Error('a clipped control was clicked') }
+  </script>
+</body></html>
