@@ -14,7 +14,7 @@ The guide follows the order you'll use it in: install, first run, reading the re
 | 6 | [Network modes: live, record, replay](06-network.md) | Your app has a backend; you want fast, stable runs that also walk destructive controls |
 | 7 | [Business rules and intent files](07-rules-intent.md) | You want to check business rules |
 | 8 | [Fuzzing](08-fuzz.md) | You want to find rare action sequences that break things |
-| 9 | [Widget adapters](09-adapters.md) | You have drag-and-drop, calendars, gantts or canvas widgets |
+| 9 | [Widget adapters](09-adapters.md) | You have drag-and-drop boards, time grids, gantts or canvas widgets |
 | 10 | [Vite plugin and affected-only runs](10-plugin-affected.md) | You want pull requests to run fast |
 | 11 | [Running in CI](11-ci.md) | You're adding it to GitHub Actions |
 | 12 | [MCP server for coding agents](12-mcp.md) | You want Claude Code, Cursor or Copilot to read the graph and propose tests |
@@ -42,7 +42,7 @@ The report prints to the terminal, the results go to `.uiscout/`, and the graph 
 
 | Term | Meaning |
 | --- | --- |
-| **Node (screen)** | A route plus whatever overlay is open: `/calendar`, `/products [Confirm purchase]`. Data IDs in URLs collapse to `:id` |
+| **Node (screen)** | A route plus whatever overlay is open: `/dashboard`, `/products [Confirm purchase]`. Data IDs in URLs collapse to `:id` |
 | **Edge** | An action (click, typing, route) and the screen it leads to |
 | **Oracle** | A check that decides whether a step is right |
 | **Context** | A persona (guest, member…) with its own setup steps |

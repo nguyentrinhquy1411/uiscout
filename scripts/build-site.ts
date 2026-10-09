@@ -39,6 +39,7 @@ const GROUPS: Array<[string, Array<[file: string, title: string]>]> = [
     ['13-safety', 'Safety'],
     ['14-troubleshooting', 'Troubleshooting'],
     ['cli-reference', 'CLI reference'],
+    ['roadmap', 'Roadmap'],
   ]],
 ]
 const PAGES = GROUPS.flatMap(([group, pages]) => pages.map(([file, title]) => ({ file, title, group })))

@@ -1,6 +1,6 @@
 # 9. Widget adapters
 
-Calendar grids, gantts, drag-and-drop boards, canvas editors: their actions are drags, resizes and zooms, and right or wrong lives in their data, not in whether a click errors. An **adapter** describes such a widget to uiscout.
+Time grids, gantts, drag-and-drop boards, canvas editors: their actions are drags, resizes and zooms, and right or wrong lives in their data, not in whether a click errors. An **adapter** describes such a widget to uiscout.
 
 > Adapters import types from `uiscout/adapter`: install uiscout in the app (option B in [install](01-install.md)).
 
@@ -94,7 +94,7 @@ uiscout adapters --url http://localhost:5173/ --dir src/planning   # only look h
 
 ```text
 uiscout adapters (seed 11)
-calendar.TimeGrid: 1 failure
+planning.Gantt: 1 failure
   moving Lunch changed its duration: 60 → 45 min
   seed 12, shrunk from 7 to 1 action:
     1. move {"id":"3","minutes":15}
@@ -112,6 +112,6 @@ An action that can't be performed (nothing to grab, for instance) is reported as
 
 ## Example
 
-[`examples/calendar/timegrid.adapter.ts`](../../examples/calendar/timegrid.adapter.ts) drives a calendar's week grid (move, resize, zoom) with five invariants. The app publishes `window.__uiscout.calendar.getState()`.
+[`examples/calendar/timegrid.adapter.ts`](../../examples/calendar/timegrid.adapter.ts) drives a week-view time grid (move, resize, zoom) with five invariants. The app publishes `window.__uiscout.calendar.getState()`.
 
 Next: [Vite plugin and affected-only runs](10-plugin-affected.md).

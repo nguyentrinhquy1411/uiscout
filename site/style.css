@@ -221,3 +221,22 @@ footer { padding-block: 32px 48px; color: var(--ink-3); font-size: 14px; }
 footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 28px; justify-content: space-between; }
 .cmd .copy { position: static; flex: none; }
 .chapters a { align-content: start; }
+
+/* What it catches: six defect kinds in a ruled grid */
+.catches { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 36px; border-top: 2px solid var(--ink); }
+.catches > div { padding: 20px 24px 22px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.catches > div:not(:nth-child(3n + 1)) { padding-left: 24px; border-left: 1px solid var(--line); }
+.catches b { font: 700 17px/1.25 var(--f-display); font-stretch: 112%; }
+.catches p { margin: 8px 0 0; color: var(--ink-2); font-size: 15px; }
+@media (max-width: 820px) {
+  .catches { grid-template-columns: minmax(0, 1fr); }
+  .catches > div:not(:nth-child(3n + 1)) { padding-left: 0; border-left: 0; }
+}
+
+/* Speed: the facts under the timing table */
+.facts { list-style: none; padding: 0; margin: 28px 0 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
+.facts li { color: var(--ink-2); font-size: 15px; min-width: 0; }
+.facts b { color: var(--ink); }
+@media (max-width: 820px) { .facts { grid-template-columns: minmax(0, 1fr); } }
+
+pre.code.start { max-width: 46em; margin-top: 24px; }

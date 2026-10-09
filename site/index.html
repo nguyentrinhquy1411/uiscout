@@ -18,9 +18,10 @@
       uiscout
     </a>
     <nav>
-      <a href="#how" class="hide-sm">How it works</a>
-      <a href="#compare" class="hide-sm">Compare</a>
+      <a href="#catches" class="hide-sm">What it catches</a>
+      <a href="#speed" class="hide-sm">Speed</a>
       <a href="docs/index.html">Docs</a>
+      <a href="docs/roadmap.html" class="hide-sm">Roadmap</a>
       <a href="https://github.com/nguyentrinhquy1411/uiscout">GitHub</a>
     </nav>
   </div>
@@ -40,8 +41,8 @@
       <div class="cmd"><span id="hero-cmd">uiscout check --url http://localhost:5173/ --open</span><button class="copy" data-copy="hero-cmd" type="button">copy</button></div>
     </div>
 
-    <figure class="map" aria-label="A walk of a calendar app: eight screens, one script error found on the account menu" style="margin:0">
-      <div class="map-head"><span><b>.uiscout/graph.html</b> · calendar app</span><span id="map-count">8 screens · 1 error</span></div>
+    <figure class="map" aria-label="An example walk of a small shop: eight screens, one failed request found at checkout" style="margin:0">
+      <div class="map-head"><span><b>.uiscout/graph.html</b> · example shop</span><span id="map-count">8 screens · 1 error</span></div>
       <svg viewBox="0 0 560 300" role="img" aria-labelledby="map-title">
         <title id="map-title">Screens reached from the entry, in columns by steps from the entry</title>
         <text class="col" x="20" y="18">ENTRY</text>
@@ -52,20 +53,35 @@
         <circle class="scout" id="scout" r="5" cx="75" cy="157" opacity="0"/>
       </svg>
       <div class="log" id="log" aria-live="off"><span class="d">node / (depth 0)</span>
-click Calendar      → /calendar             <span class="k">ok</span>
-click Docs          → /docs                 <span class="k">ok</span>
-click Account       → / [Account]           <span class="x">script</span>
-  <span class="x">console.error: Base UI: MenuGroupContext is missing.</span></div>
+click Products      → /products             <span class="k">ok</span>
+click Pricing       → /pricing              <span class="k">ok</span>
+click Place order   → /checkout [Confirm]   <span class="x">network</span>
+  <span class="x">POST /api/orders returned 500</span></div>
     </figure>
   </div>
 </section>
 
 <section class="proof" aria-label="Measured results">
   <div class="wrap">
-    <div class="cell"><b>34 / 35</b><span>navigation patterns observed on uigraph's gauntlet, with a five-line config</span></div>
-    <div class="cell"><b>2 bugs</b><span>found and fixed in a real calendar app on the first run, with no spec</span></div>
+    <div class="cell"><b>0</b><span>tests to write before the first report: point it at a running app</span></div>
+    <div class="cell"><b>34 / 35</b><span>navigation patterns observed on uigraph's routing gauntlet, with a five-line config</span></div>
+    <div class="cell"><b>~1 min</b><span>for a quick walk of an 11-screen React app (186 steps, 182 edges)</span></div>
     <div class="cell"><b>25 s</b><span>for an affected-only pull request run, against 42 s for the whole app</span></div>
-    <div class="cell"><b>1 move</b><span>a planted drag bug, found by an adapter and shrunk to a single action</span></div>
+  </div>
+</section>
+
+<section class="band" id="catches">
+  <div class="wrap">
+    <h2>What it catches</h2>
+    <p class="intro">The defects that slip past unit tests and nobody clicks through before a release: found by walking the app the way a curious user would, after every single step.</p>
+    <div class="catches">
+      <div><b>Crashes and console errors</b><p>An exception on a menu nobody opens in tests, a library warning that means a broken component, an unhandled promise.</p></div>
+      <div><b>Broken requests</b><p>A 500 behind a button, a 404 from a stale link, a call that fails only from one screen.</p></div>
+      <div><b>Dead controls</b><p>A button under an invisible overlay, a link that goes nowhere, a click that can't land.</p></div>
+      <div><b>Layout and accessibility</b><p>Overlapping controls, clipped labels, buttons with no accessible name.</p></div>
+      <div><b>Regressions</b><p>A control that disappeared, a renamed action, a link that now leads somewhere else, all as a reviewable git diff.</p></div>
+      <div><b>Broken business rules</b><p>"An empty cart can't be ordered", "a guest never reaches checkout": your rules, checked on every path walked.</p></div>
+    </div>
   </div>
 </section>
 
@@ -110,6 +126,41 @@ click Account       → / [Account]           <span class="x">script</span>
   </div>
 </section>
 
+<section class="band" id="speed">
+  <div class="wrap">
+    <h2>How fast it is</h2>
+    <p class="intro">About 0.4–2 s per step: each step waits until the network is idle and the page has been still for 250 ms, never for a fixed timeout. Screens run four at a time, so a run takes about as long as its busiest screen.</p>
+    <div class="compare">
+      <table>
+        <thead><tr><th>Run</th><th>What it walks</th><th>Time</th></tr></thead>
+        <tbody>
+          <tr><td><code>check --depth 1 --no-a11y --fast-forward 0</code></td><td>11 screens, 186 steps</td><td>~1 min</td></tr>
+          <tr><td><code>check</code> (depth 1, all checks)</td><td>11 screens</td><td>~2 min</td></tr>
+          <tr><td><code>check --depth 2</code></td><td>31 screens, 431 steps</td><td>~4 min</td></tr>
+          <tr><td><code>check --affected origin/main</code></td><td>5 of 10 screens, from a one-file change</td><td>25 s (vs 42 s)</td></tr>
+          <tr><td><code>check --depth 3</code>, no config</td><td>a 10-route sample app, 19 clicks</td><td>7 s</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul class="facts">
+      <li><b>Deterministic.</b> A fixed clock and recorded API responses give the same graph on every run of the same commit: a baseline reran with no diff at 31 screens and 352 edges.</li>
+      <li><b>No backend in CI.</b> <code>--mode replay</code> answers every API call from recordings, and fails closed: nothing reaches a real server.</li>
+      <li><b>No model, no API key.</b> Every judgement is a deterministic check; AI agents can read the graph over MCP, but never decide a result.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="band" id="start">
+  <div class="wrap">
+    <h2>Start in three commands</h2>
+    <p class="intro">Any web app you can open in a browser: a dev server, a preview build or staging.</p>
+<pre class="code start">pnpm add -D github:nguyentrinhquy1411/uiscout
+pnpm exec playwright install chromium
+pnpm exec uiscout check --url http://localhost:5173/ --open</pre>
+    <p class="intro">Then commit a baseline with <code>uiscout check --update</code>, and add the <a href="docs/11-ci.html">GitHub Actions job</a> so every pull request gets a report comment.</p>
+  </div>
+</section>
+
 <section class="band" id="compare">
   <div class="wrap">
     <h2>Where it fits</h2>
@@ -144,7 +195,7 @@ click Account       → / [Account]           <span class="x">script</span>
       <a href="docs/06-network.html"><span>06</span><b>Network modes</b><em>Fast, stable runs with no backend</em></a>
       <a href="docs/07-rules-intent.html"><span>07</span><b>Business rules and intent files</b><em>Check that the app does the right thing</em></a>
       <a href="docs/08-fuzz.html"><span>08</span><b>Fuzzing</b><em>Rare action sequences that break things</em></a>
-      <a href="docs/09-adapters.html"><span>09</span><b>Widget adapters</b><em>Calendars, gantts, boards, canvases</em></a>
+      <a href="docs/09-adapters.html"><span>09</span><b>Widget adapters</b><em>Drag-and-drop boards, gantts, canvases</em></a>
       <a href="docs/10-plugin-affected.html"><span>10</span><b>Vite plugin and affected runs</b><em>Fast pull request runs</em></a>
       <a href="docs/11-ci.html"><span>11</span><b>Running in CI</b><em>GitHub Actions and PR comments</em></a>
       <a href="docs/12-mcp.html"><span>12</span><b>MCP server for coding agents</b><em>Claude Code, Cursor, Copilot</em></a>

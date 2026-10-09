@@ -13,10 +13,10 @@ uiscout: 1 errors, 2 warnings · 11 nodes, 223 edges, 227 steps
 
 Errors (1)
   script       console.error: Error: Base UI: MenuGroupContext is missing.
-               at / → click /.button:account@nav · /calendar → click … · +5 more
+               at / → click /.button:account@nav · /dashboard → click … · +5 more
 ```
 
-**Docs:** the [user guide](docs/guide/README.md) and the [CLI reference](docs/guide/cli-reference.md). `pnpm site` builds the website into `site-dist/`: the landing page in [`site/`](site/) and one page per guide chapter, rendered from the Markdown. The design is in [`docs/design.md`](docs/design.md).
+**Docs:** the [user guide](docs/guide/README.md), the [CLI reference](docs/guide/cli-reference.md) and the [roadmap](docs/guide/roadmap.md). `pnpm site` builds the website into `site-dist/`: the landing page in [`site/`](site/) and one page per guide chapter, rendered from the Markdown. The design is in [`docs/design.md`](docs/design.md).
 
 ## What it checks
 
@@ -40,7 +40,7 @@ Every step is judged three ways.
   - `--affected origin/main` then walks only the screens a change touches. ([guide](docs/guide/10-plugin-affected.md))
 - **Pull request comments.** Each run writes `report.md` with the verdict, the graph diff, the errors and coverage. ([guide](docs/guide/11-ci.md), [workflow](examples/github-workflow.yml))
 - **Fuzzing.** `uiscout fuzz` takes seeded random walks and shrinks each failure to the shortest sequence that still fails. ([guide](docs/guide/08-fuzz.md))
-- **Widget adapters.** Calendars, gantts, boards and canvases are driven by real drags, with invariants checked after each action of a random sequence. ([guide](docs/guide/09-adapters.md), [example](examples/calendar/timegrid.adapter.ts))
+- **Widget adapters.** Time grids, gantts, boards and canvases are driven by real drags, with invariants checked after each action of a random sequence. ([guide](docs/guide/09-adapters.md), [example](examples/calendar/timegrid.adapter.ts))
 - **MCP server.** `uiscout mcp` lets Claude Code, Cursor or Copilot do three things:
   - read the graph and findings;
   - walk one control in a real browser;
@@ -54,10 +54,8 @@ Every step is judged three ways.
 - **uigraph's navigation gauntlet:** 34 of 35 cases observed, with a five-line config.
   - The case it misses is a link that opens a new tab, which is listed rather than walked.
   - uigraph itself found 0 screens on a TanStack Router app, because it has no adapter for that router. See [comparison](docs/comparison.md).
-- **First run on a real calendar app:** found 2 bugs, both since fixed:
-  - a menu label rendered outside its group, which threw on every open;
-  - chat failing silently when offline.
-- **Stable baseline:** the same calendar app at depth 2 (31 screens, 352 edges) reruns with no diff.
+- **Speed:** a quick walk (depth 1, no axe) of an 11-screen React app takes about a minute (186 steps); depth 2 on 31 screens about 4 minutes.
+- **Stable baseline:** a React app at depth 2 (31 screens, 352 edges) reruns with no diff.
 - **Affected-only run:** a one-file change walked 5 of 10 screens in 25 s instead of 42 s, and found the same errors.
 - **Widget adapter:** a planted drag bug was caught in 3 of 4 seeded runs, each shrunk to a single move.
 

@@ -64,7 +64,7 @@ uiscout check          # must say "Graph diff (no change)"
 uiscout check          # and again
 ```
 
-Measured: a calendar app at depth 2 (31 screens, 352 edges) reran twice with no change.
+Measured: a React app at depth 2 (31 screens, 352 edges) reran twice with no change.
 
 Still drifting? See [unstable baselines](14-troubleshooting.md#unstable-baselines).
 

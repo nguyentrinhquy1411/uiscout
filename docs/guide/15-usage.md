@@ -74,7 +74,7 @@ Once `uiscout/usage.json` exists, every `uiscout check` adds a section:
 Usage (uiscout/usage.json: 1,067 actions on tracked controls)
   Usage-weighted coverage 90% (960 of 1,067 actions are on controls the run walked)
   Untested, by traffic
-    95  /calendar  calendar.Event.delete  — destructive: walk it with --mode replay
+    95  /board     board.Card.delete      — destructive: walk it with --mode replay
     12  /reports   reports.Page.export    — screen not reached by the walk
   Unused (no use in the period, on screens people visit)
     /settings  settings.Data.importJson  (2,200 views)

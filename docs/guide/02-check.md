@@ -41,7 +41,7 @@ Graph diff (vs uiscout/app.graph.json)          ← only with a baseline
 
 Errors (1)
   script       console.error: Error: Base UI: MenuGroupContext is missing.
-               at / → click /.button:account@nav · /calendar → click … · +5 more
+               at / → click /.button:account@nav · /dashboard → click … · +5 more
 
 Warnings (2)
   a11y         button-name: Buttons must have discernible text — #nameless
@@ -111,7 +111,7 @@ Each entry has up to three lines:
 
 | Symptom | Fix |
 | --- | --- |
-| Elements overlap by design (stacked calendar events) | `--allow-overlap "[data-event-id]"` |
+| Elements overlap by design (stacked cards, timeline items) | `--allow-overlap "[data-event-id]"` |
 | A 4xx is expected (a session check) | `--allow-4xx "GET /api/me"` or `--allow-4xx 404` |
 | `console.error` from a third-party library | `"ignoreConsole": ["part of the message"]` in the config |
 | An external API is slow or costs money | `--block "**/api/ai/**"` |

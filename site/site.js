@@ -1,25 +1,25 @@
 (() => {
   if (!document.getElementById('edges')) return
-  // ---- The walked map: the calendar app's real screens, and the bug the first run caught.
+  // ---- The walked map: an example shop, and the kind of defect a first walk turns up.
   const NODES = [
     { id: 'root', label: '/', x: 20, y: 140, w: 110 },
-    { id: 'cal', label: '/calendar', x: 200, y: 40, w: 150 },
-    { id: 'docs', label: '/docs', x: 200, y: 105, w: 150 },
-    { id: 'chat', label: '/chat', x: 200, y: 170, w: 150 },
-    { id: 'acct', label: '/ [Account]', x: 200, y: 235, w: 150, overlay: true },
-    { id: 'set', label: '/calendar [Settings]', x: 390, y: 40, w: 160, overlay: true },
-    { id: 'doc', label: '/docs/:id', x: 390, y: 105, w: 160 },
-    { id: 'thr', label: '/chat/:id', x: 390, y: 170, w: 160 },
+    { id: 'prod', label: '/products', x: 200, y: 40, w: 150 },
+    { id: 'price', label: '/pricing', x: 200, y: 105, w: 150 },
+    { id: 'acct', label: '/account', x: 200, y: 170, w: 150 },
+    { id: 'search', label: '/ [Search]', x: 200, y: 235, w: 150, overlay: true },
+    { id: 'item', label: '/products/:id', x: 390, y: 40, w: 160 },
+    { id: 'cart', label: '/checkout', x: 390, y: 105, w: 160 },
+    { id: 'confirm', label: '/checkout [Confirm]', x: 390, y: 170, w: 160, overlay: true },
   ]
   const H = 32
   const WALK = [
-    ['root', 'cal', 'click Calendar', 'ok'],
-    ['cal', 'set', 'click Settings', 'ok'],
-    ['root', 'docs', 'click Docs', 'ok'],
-    ['docs', 'doc', 'click Untitled', 'ok'],
-    ['root', 'chat', 'click Chat', 'ok'],
-    ['chat', 'thr', 'press Enter', 'ok'],
-    ['root', 'acct', 'click Account', 'script'],
+    ['root', 'prod', 'click Products', 'ok'],
+    ['prod', 'item', 'click Desk lamp', 'ok'],
+    ['root', 'price', 'click Pricing', 'ok'],
+    ['price', 'cart', 'click Buy now', 'ok'],
+    ['root', 'acct', 'click Account', 'ok'],
+    ['root', 'search', 'press /', 'ok'],
+    ['cart', 'confirm', 'click Place order', 'network'],
   ]
   const ns = 'http://www.w3.org/2000/svg'
   const byId = Object.fromEntries(NODES.map((n) => [n.id, n]))
@@ -37,15 +37,15 @@
     el('text', { x: n.x + 10, y: n.y + 20 }, g).textContent = n.label
     nodeEls[n.id] = g
   }
-  const acct = byId.acct
+  const bad = byId.confirm
   const badge = el('g', { class: 'badge' }, gNodes)
-  el('circle', { cx: acct.x + acct.w, cy: acct.y, r: 8 }, badge)
-  el('text', { x: acct.x + acct.w, y: acct.y + 3.5, 'text-anchor': 'middle' }, badge).textContent = '1'
-  nodeEls.acct.classList.add('err')
+  el('circle', { cx: bad.x + bad.w, cy: bad.y, r: 8 }, badge)
+  el('text', { x: bad.x + bad.w, y: bad.y + 3.5, 'text-anchor': 'middle' }, badge).textContent = '1'
+  nodeEls.confirm.classList.add('err')
 
   const log = document.getElementById('log'), scout = document.getElementById('scout')
   const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c])
-  const line = ([a, b, act, res]) => `${esc(act.padEnd(19))} → ${esc(byId[b].label.padEnd(22))}${res === 'ok' ? '<span class="k">ok</span>' : '<span class="x">script</span>'}`
+  const line = ([a, b, act, res]) => `${esc(act.padEnd(19))} → ${esc(byId[b].label.padEnd(22))}${res === 'ok' ? '<span class="k">ok</span>' : `<span class="x">${res}</span>`}`
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
   if (reduce) return
 
@@ -70,7 +70,7 @@
       scout.setAttribute('opacity', 0)
       nodeEls[w[1]].classList.add('seen')
       lines.push(line(w))
-      if (w[3] !== 'ok') { badge.style.opacity = 1; lines.push('  <span class="x">console.error: Base UI: MenuGroupContext is missing.</span>') }
+      if (w[3] !== 'ok') { badge.style.opacity = 1; lines.push('  <span class="x">POST /api/orders returned 500</span>') }
       log.innerHTML = lines.slice(-5).join('\n')
       i = (i + 1) % WALK.length
       setTimeout(step, i === 0 ? 3200 : 380)
