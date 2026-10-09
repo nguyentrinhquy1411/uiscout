@@ -1,0 +1,54 @@
+# Copy to .github/workflows/uiscout-report.yml in the app's repo.
+# Like github-workflow.yml, plus a hosted report: every pull request gets its
+# own page with the graph, and the PR comment links to it.
+#
+# Needs a VERCEL_TOKEN secret (vercel.com/account/tokens). Each deploy is a
+# Vercel preview: turn on Deployment Protection for the project if the app's
+# screens are not public. Secrets are not given to pull requests from forks,
+# so for those the step is skipped and the comment has no link.
+name: uiscout
+on: pull_request
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      # Empty for pull requests from forks: the hosting step is skipped.
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm build --mode test
+
+      - name: Serve the build
+        run: |
+          pnpm preview --port 4173 --strictPort &
+          for i in $(seq 1 30); do curl -sf http://localhost:4173/ >/dev/null && break; sleep 1; done
+
+      - name: uiscout
+        # --screenshots only when the app shows no personal data in CI.
+        run: pnpm exec uiscout check --url http://localhost:4173/ --mode replay --affected origin/${{ github.base_ref }}
+
+      - name: Host the report
+        id: host
+        if: always() && hashFiles('.uiscout/graph.html') != '' && env.VERCEL_TOKEN != ''
+        run: |
+          pnpm exec uiscout site --to uiscout-site
+          url=$(npx --yes vercel@latest deploy uiscout-site --yes --token "$VERCEL_TOKEN")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          printf '\n[Open the graph for this pull request](%s)\n' "$url" >> .uiscout/report.md
+
+      - name: Comment on the pull request
+        if: always() && hashFiles('.uiscout/report.md') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment ${{ github.event.pull_request.number }} --edit-last --create-if-none --body-file .uiscout/report.md

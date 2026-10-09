@@ -42,6 +42,18 @@ describe('init', () => {
       webServer: { command: 'npm run dev', url: 'http://localhost:5173/', timeout: 120 },
     })
     expect(readFileSync(path.join(root, '.gitignore'), 'utf8')).toBe('node_modules\n.uiscout/\n')
+    expect(JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).scripts).toMatchObject({ dev: 'vite', scout: 'uiscout check', 'scout:quick': 'uiscout check --quick' })
+  })
+
+  it('blocks paid and tracking services the code calls', async () => {
+    const root = project({
+      'package.json': '{}',
+      'src/ai.ts': "fetch('https://api.openai.com/v1/chat/completions')",
+      'src/chat.ts': "const url = `${API}/v1/ai/chat`; post('/v1/ai/chat')",
+      'src/pay.tsx': "loadScript('https://js.stripe.com/v3')",
+    })
+    await init(root, { log: () => {} })
+    expect(JSON.parse(readFileSync(path.join(root, 'uiscout.config.json'), 'utf8')).block).toEqual(['**/*.stripe.com/**', '**/ai/**', '**/api.openai.com/**'])
   })
 
   it('leaves an existing config alone unless forced', async () => {

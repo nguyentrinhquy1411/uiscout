@@ -21,6 +21,7 @@ import { type IntentSummary, loadIntent, loadRules, summarizeIntent } from './in
 import { init } from './init.ts'
 import { discoverRoutes } from './routes.ts'
 import { groupFindings, renderDiff, renderMarkdown, renderText, renderUsage } from './report.ts'
+import { buildReportSite } from './site.ts'
 import type { Finding, Graph } from './types.ts'
 
 /*
@@ -33,6 +34,7 @@ import type { Finding, Graph } from './types.ts'
 const USAGE = `Usage: uiscout init [--force]
        uiscout check [--url <url>] [options]
        uiscout export [<n>] [--to <file>]
+       uiscout site [--to <dir>]
        uiscout diff <before.graph.json> <after.graph.json>
        uiscout graph [<graph.json>] [--open] [--out <dir>]
        uiscout fuzz [--url <url>] [--seed <n>] [--runs <n>] [--length <n>]
@@ -147,6 +149,14 @@ async function main() {
   }
   const out = values.out ?? path.resolve('.uiscout')
   values.out = out
+  if (positionals[0] === 'site') {
+    // The last run as a static site, to host per pull request (see the CI guide).
+    const to = values.to ?? path.join(callerCwd, 'uiscout-site')
+    const written = await buildReportSite(out, to)
+    process.stdout.write(`Wrote ${path.relative(callerCwd, to)}/: ${written.join(', ')}\n`)
+    process.exit(0)
+  }
+
   if (positionals[0] === 'export') {
     // A finding of the last run as a Playwright test (before the config is read
     // with its variables filled in: the test keeps them as process.env).

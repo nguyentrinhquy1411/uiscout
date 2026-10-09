@@ -36,4 +36,13 @@ describe('playwrightSpec', () => {
     expect(spec).toContain('.fill(`${process.env.APP_PASSWORD}`)')
     expect(spec).toContain('// TODO: assert what "layout" checked')
   })
+
+  it('keeps app text inside its comments, whatever line terminator it carries', () => {
+    const evil = 'boom\u2028process.exit(1)\rrequire("child_process")'
+    const spec = playwrightSpec({
+      url: 'http://localhost:5173/',
+      finding: { oracle: 'script', severity: 'error', at: `/x\u2029→ click y`, message: evil, steps: [{ kind: 'click', fp: fp({ name: 'Pay\u2028alert(1)' }) }] },
+    })
+    for (const line of spec.split(/\r\n|[\n\r\u2028\u2029]/)) if (/process\.exit|require\(|alert\(1\)/.test(line)) expect(line.trimStart()).toMatch(/^(\/\/|test\(|await page\.getByRole)/)
+  })
 })

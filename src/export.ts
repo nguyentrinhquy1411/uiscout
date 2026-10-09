@@ -9,7 +9,15 @@ import type { Finding, Fingerprint, Step } from './types.ts'
  * finding of another kind (layout, a11y, a rule) it says what to assert.
  */
 
-const js = (s: string) => JSON.stringify(s)
+/** A string literal; U+2028/9 escaped too, so no line of the file is ever app text. */
+const js = (s: string) => JSON.stringify(s).replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')
+
+/**
+ * App text (error messages, control names) for a // comment. Every line
+ * terminator JavaScript knows ends a comment, not only \n: a message carrying
+ * \r or U+2028 must not turn into code in the test file.
+ */
+const comment = (s: string) => s.replace(/[\r\n\u2028\u2029]+/g, ' ')
 
 /** A config string as code: "${PASSWORD}" becomes process.env.PASSWORD, so no secret is written out. */
 function value(s: string): string {
@@ -36,10 +44,10 @@ const ROUTE = `await page.evaluate((path) => {
   }, `
 
 function stepCode(step: Step): string[] {
-  const comment = `  // ${describeStep(step).replace(/\n/g, ' ')}`
-  if (step.kind === 'route') return [comment, `  ${ROUTE}${js(step.path)})`]
-  if (step.kind === 'click') return [comment, `  await ${locatorFor(step.fp)}.click()`]
-  return [comment, `  await ${locatorFor(step.fp)}.fill(${js(step.text)})`, ...(step.enter ? [`  await ${locatorFor(step.fp)}.press('Enter')`] : [])]
+  const note = `  // ${comment(describeStep(step))}`
+  if (step.kind === 'route') return [note, `  ${ROUTE}${js(step.path)})`]
+  if (step.kind === 'click') return [note, `  await ${locatorFor(step.fp)}.click()`]
+  return [note, `  await ${locatorFor(step.fp)}.fill(${js(step.text)})`, ...(step.enter ? [`  await ${locatorFor(step.fp)}.press('Enter')`] : [])]
 }
 
 function setupCode(steps: SetupStep[]): string[] {
@@ -69,9 +77,9 @@ export function playwrightSpec({ finding, url, setup, auth }: ExportInput): stri
     `import { expect, test } from '@playwright/test'`,
     '',
     `// Exported by uiscout from ${finding.severity === 'error' ? 'an error' : 'a warning'} it found:`,
-    `//   ${finding.oracle}: ${finding.message.replace(/\n/g, ' ')}`,
-    `//   at ${finding.at}${finding.source ? ` (${finding.source})` : ''}`,
-    ...(network ? [] : [`// This test walks the path; add the assertion for "${finding.oracle}" where marked.`]),
+    `//   ${finding.oracle}: ${comment(finding.message)}`,
+    `//   at ${comment(finding.at)}${finding.source ? ` (${comment(finding.source)})` : ''}`,
+    ...(network ? [] : [`// This test walks the path; add the assertion for "${comment(finding.oracle)}" where marked.`]),
     `test(${js(`${finding.oracle}: ${finding.message.slice(0, 80)}`)}, async ({ page }) => {`,
     '  const problems: string[] = []',
     "  page.on('pageerror', (err) => problems.push(`uncaught: ${err.message}`))",
@@ -88,7 +96,7 @@ export function playwrightSpec({ finding, url, setup, auth }: ExportInput): stri
   if (setup?.length) lines.push('  // Context setup from uiscout.config.json', ...setupCode(setup))
   for (const step of steps) lines.push(...stepCode(step))
   lines.push("  await page.waitForLoadState('networkidle')", '')
-  if (!network) lines.push(`  // TODO: assert what "${finding.oracle}" checked: ${finding.message.replace(/\n/g, ' ').slice(0, 120)}`)
+  if (!network) lines.push(`  // TODO: assert what "${comment(finding.oracle)}" checked: ${comment(finding.message).slice(0, 120)}`)
   lines.push('  expect(problems).toEqual([])', '})', '')
   return lines.join('\n')
 }

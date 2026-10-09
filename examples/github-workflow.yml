@@ -42,3 +42,4 @@ jobs:
           path: |
             .uiscout/
             !.uiscout/screens/
+            !.uiscout/server.log
