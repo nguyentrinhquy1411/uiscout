@@ -5,6 +5,7 @@ import path from 'node:path'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
+import { authStateFile, signIn } from './auth.ts'
 import { loadBaseline, type Snapshots } from './baseline.ts'
 import { type FileConfig, loadConfig } from './config.ts'
 import { crawl, type Skip } from './crawl.ts'
@@ -130,16 +131,22 @@ export async function walkEdge(ws: Workspace, from: string, element: string) {
   const replays = (await loadBaseline(ws.baselineDir)).replays
   const keys = Object.keys(replays).filter((k) => (k.startsWith('[') ? k.slice(k.indexOf('] ') + 2) : k) === from)
   if (!keys.length) throw new Error(`no recorded path to ${from} in ${path.relative(ws.root, ws.baselineDir)}/paths.json: run uiscout check --update first`)
-  const only: Record<string, Step[]> = { [keys[0]]: replays[keys[0]] }
+  // One context is walked, so the key goes without its "[context] " tag.
+  const only: Record<string, Step[]> = { [from]: replays[keys[0]] }
   const wanted = element.toLowerCase()
   const network = (ws.config.network ?? 'live') as NetworkMode
+  // The context the recorded path belongs to, signed in the same way check does.
+  const all = ws.config.contexts ?? (ws.config.auth ? [{ name: 'default', auth: ws.config.auth }] : [])
+  const tag = keys[0].startsWith('[') ? keys[0].slice(1, keys[0].indexOf('] ')) : null
+  let context = tag ? all.find((c) => c.name === tag) : all.length === 1 ? all[0] : undefined
+  if (context?.auth) context = { ...context, storageState: await signIn(entry, context.auth, await authStateFile(context.name)) }
   const result = await crawl({
     url: entry,
     only,
     maxDepth: 0,
     a11y: false,
     screenshots: false,
-    contexts: ws.config.contexts?.filter((c) => keys[0].startsWith(`[${c.name}] `)) ?? undefined,
+    contexts: context ? [context] : undefined,
     block: ws.config.block,
     allow4xx: ws.config.allow4xx,
     ignoreConsole: ws.config.ignoreConsole,

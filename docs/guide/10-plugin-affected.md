@@ -86,6 +86,6 @@ It **runs everything**, and says why, when it can't be sure:
 
 Measured on a sample app: a one-file change walked 5 of 10 screens in 25 s instead of 42 s, and found the same errors.
 
-Paths are relative to the current directory, so run from the app's root (in a monorepo too).
+Changed files are read relative to the config's directory, which is also where the plugin's `data-scout-src` paths start (the Vite root, or webpack's context): keep `uiscout.config.json` in the app's package in a monorepo.
 
 Next: [Running in CI](11-ci.md).

@@ -126,3 +126,19 @@ describe('MCP server', () => {
     await other.close()
   })
 })
+
+describe('run_edge behind a sign-in', () => {
+  it('signs in the way check does before walking the edge', async () => {
+    const { walkEdge } = await import('../src/mcp.ts')
+    const { signIn } = await import('../src/auth.ts')
+    const auth = { steps: [{ goto: '/login.html' }, { fill: 'Name', text: 'ann' }, { click: 'Log in' }], waitFor: '/members.html' }
+    const dir = await mkdtemp(path.join(tmpdir(), 'uiscout-mcp-auth-'))
+    const state = path.join(dir, 'state.json')
+    await signIn(zoo.url, auth, state)
+    const run = await crawl({ url: `${zoo.url}members.html`, maxDepth: 0, a11y: false, contexts: [{ name: 'default', storageState: state }] })
+    await saveBaseline(path.join(dir, 'uiscout'), run.graph, run.snapshots, run.replays)
+    const ws = { root: dir, config: { url: `${zoo.url}members.html`, auth }, baselineDir: path.join(dir, 'uiscout'), runDir: path.join(dir, '.uiscout') }
+    const res = await walkEdge(ws, '/members.html', 'Members area')
+    expect(res.observed).toEqual([expect.objectContaining({ to: '/clean.html' })])
+  }, 90_000)
+})

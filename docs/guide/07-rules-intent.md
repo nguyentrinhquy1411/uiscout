@@ -122,7 +122,7 @@ A workflow that works: product people write the sentences, developers write the 
 
 ## Notes
 
-- Rules and intent files are found **under the current directory** (skipping `node_modules`, `.git`, `dist`, `build`, `.uiscout`, `coverage`). Always run from the app's root.
+- Rules and intent files are found under the config's directory, or `root` when the config sets it (skipping `node_modules`, `.git`, `dist`, `build`, `.uiscout`, `coverage`), wherever the command is run from.
 - `--no-rules` turns rules and intent coverage off.
 
 Next: [Fuzzing](08-fuzz.md).

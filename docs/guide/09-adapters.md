@@ -114,4 +114,4 @@ An action that can't be performed (nothing to grab, for instance) is reported as
 
 [`examples/calendar/timegrid.adapter.ts`](../../examples/calendar/timegrid.adapter.ts) drives a week-view time grid (move, resize, zoom) with five invariants. The app publishes `window.__uiscout.calendar.getState()`.
 
-Next: [Vite plugin and affected-only runs](10-plugin-affected.md).
+Next: [Identity plugins and affected-only runs](10-plugin-affected.md).

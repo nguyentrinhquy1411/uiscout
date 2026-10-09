@@ -29,7 +29,10 @@ In `--mode replay`, every API call, beacon and form POST to any origin is answer
 | `uiscout/recordings.json` | API responses | Redacted: emails, tokens, JWTs, bearer values, secret-looking strings; sensitive keys (password, token, session, cookie, auth, phone, email, address, card…) hide **whole values, nested ones included**; form bodies; bodies without a content type; query values in keys |
 | `uiscout/app.graph.json`, `snapshots/` | Visible names of controls | Names are redacted when the fingerprint is made (emails, tokens) |
 | `.uiscout/screens/*.jpg` | Screenshots | **Pixels can't be redacted.** Off by default in CI; excluded from the example workflow's artifact |
-| `uiscout.config.json` | Login details for contexts | Plain text: use test accounts only |
+| `uiscout.config.json` | Sign-in steps for `auth` and contexts | Put passwords in `${ENV}` variables, not in the file; use test accounts only |
+| Saved sign-in (cookies, storage) | A live session of the test account | A private temporary directory (owner only), deleted when uiscout exits; never in `.uiscout/` |
+| `.uiscout/server.log` | The dev server's output (`webServer`) | Left out of the example CI artifact and of `uiscout site` |
+| `uiscout-site/` (`uiscout site`) | The graph page, reports; screenshots only with `--screenshots` | Marked `noindex`; host it where only the team can see it |
 
 Before committing:
 
@@ -49,7 +52,7 @@ uiscout also clicks controls that send requests to AI, SMS, email or test paymen
 ## Recommendations
 
 1. Run against a test environment with fake data.
-2. A dedicated test account for each context.
+2. A dedicated test account for each context, its password in an environment variable (`${SCOUT_PASSWORD}`).
 3. `--mode replay` in CI.
 4. No `--screenshots` in CI when the app shows personal data.
 5. Review `recordings.json` before committing it.

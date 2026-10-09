@@ -6,7 +6,7 @@ Proposals are quarantined. They change nothing (no test, no coverage, no baselin
 
 ## Connect an agent
 
-Run it from, or point it at, the app's root (where `uiscout.config.json` and `uiscout/` live).
+Run it from the app's package (the config is found upwards, as for `check`), or point it there with `--dir`. Tools that click need the app running: the MCP server doesn't start `webServer`.
 
 **Claude Code**
 
@@ -75,7 +75,7 @@ Proposals live in `uiscout/proposals.json`, next to the baseline. Verified edges
 
 ## Safety
 
-- `run_edge` and `verify_proposal` click in a real browser, only against the app at the `url` in `uiscout.config.json` (never a URL from the agent: context setup steps type credentials into the page), with the same safety rules as `check`: destructive controls are skipped in live mode, `block` applies, and replay mode serves recorded responses only.
+- `run_edge` and `verify_proposal` click in a real browser, only against the app at the `url` in `uiscout.config.json` (never a URL from the agent: sign-in and setup steps type credentials into the page). A context with `auth` is signed in the same way `check` does it, before the walk, with the same safety rules as `check`: destructive controls are skipped in live mode, `block` applies, and replay mode serves recorded responses only.
 - The server never edits the app's code, its rules, or the baseline graph.
 - Review `uiscout/proposals.json` like any other file before committing it.
 
