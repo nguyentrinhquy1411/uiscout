@@ -37,6 +37,7 @@ const GROUPS: Array<[string, Array<[file: string, title: string]>]> = [
     ['15-usage', 'Production usage'],
   ]],
   ['Reference', [
+    ['alternatives', 'How it compares'],
     ['13-safety', 'Safety'],
     ['14-troubleshooting', 'Troubleshooting'],
     ['cli-reference', 'CLI reference'],
