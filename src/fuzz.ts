@@ -1,5 +1,6 @@
 import { chromium, type Browser } from 'playwright'
 import { clickAt, clickFailure, nodeIdOf, quiesce, skipReason, stepLabel } from './crawl.ts'
+import { valueFor } from './fill.ts'
 import { elementId, fingerprintOf, locate, safetyOf, safetyOfText } from './identity.ts'
 import { installNetworkMode, type NetworkMode, type Recordings } from './network.ts'
 import { StepMonitor, type MonitorOptions } from './oracles/monitor.ts'
@@ -131,7 +132,7 @@ export async function fuzz(options: FuzzOptions): Promise<FuzzFailure[]> {
           const el = candidates[Math.floor(random!() * candidates.length)]
           const fp = fingerprintOf(el)
           const enter = network === 'replay' || !(el.submit && safetyOfText(el.submit) === 'destructive')
-          step = el.role === 'textbox' ? { kind: 'fill', fp, text: options.fillText ?? 'uiscout', enter } : { kind: 'click', fp }
+          step = el.role === 'textbox' ? { kind: 'fill', fp, text: valueFor(el.field, options.fillText ?? 'uiscout'), enter } : { kind: 'click', fp }
           index = el.i
         }
         const label = step.kind === 'route' ? stepLabel(step, '') : stepLabel(step, elementId(node, step.fp))

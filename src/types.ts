@@ -24,7 +24,19 @@ export interface RawElement {
   source: string | null
   /** For a field: the name of the button Enter would press (its form's default submit), if any. */
   submit: string | null
+  /** For a text field: what it accepts, so what is typed fits (see valueFor). */
+  field?: FieldInfo | null
   box: { x: number; y: number; w: number; h: number }
+}
+
+export interface FieldInfo {
+  type: string
+  /** name, id and autocomplete joined: hints like "email" or "postal-code". */
+  hints: string
+  pattern: string | null
+  min: string | null
+  max: string | null
+  maxLength: number | null
 }
 
 export interface Fingerprint {

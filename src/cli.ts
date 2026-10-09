@@ -6,7 +6,7 @@ import { parseArgs } from 'node:util'
 import { loadAdapters, runAdapter } from './adapter.ts'
 import { changedSince, type Selection, selectAffected } from './affected.ts'
 import { compareToBaseline, diffGraphs, isEmptyDiff, loadBaseline, saveBaseline, snapshotFile, type Snapshots } from './baseline.ts'
-import { signIn } from './auth.ts'
+import { authStateFile, signIn } from './auth.ts'
 import { type ContextConfig, type FileConfig, findConfig, loadConfig } from './config.ts'
 import { ensureWebServer } from './web-server.ts'
 import { loadRecordings, type NetworkMode, saveRecordings } from './network.ts'
@@ -16,6 +16,8 @@ import { startMcp } from './mcp.ts'
 import { analyzeUsage, emptyUsage, loadUsage, mergeUsage, parseUsage, saveUsage, type UsageAnalysis } from './usage.ts'
 import { openFile, renderGraphHtml } from './graph-view.ts'
 import { type IntentSummary, loadIntent, loadRules, summarizeIntent } from './intent.ts'
+import { init } from './init.ts'
+import { discoverRoutes } from './routes.ts'
 import { renderDiff, renderMarkdown, renderText, renderUsage } from './report.ts'
 import type { Finding, Graph } from './types.ts'
 
@@ -26,7 +28,8 @@ import type { Finding, Graph } from './types.ts'
  * findings under --out and prints the report. Exits 1 when there are errors.
  */
 
-const USAGE = `Usage: uiscout check [--url <url>] [options]
+const USAGE = `Usage: uiscout init [--force]
+       uiscout check [--url <url>] [options]
        uiscout diff <before.graph.json> <after.graph.json>
        uiscout graph [<graph.json>] [--open] [--out <dir>]
        uiscout fuzz [--url <url>] [--seed <n>] [--runs <n>] [--length <n>]
@@ -42,7 +45,8 @@ const USAGE = `Usage: uiscout check [--url <url>] [options]
   --out <dir>           Where to write graph.json, findings.json, report.txt, report.md (default .uiscout)
   --depth <n>           Actions deep from the entry (default 2)
   --max-steps <n>       Total actions (default 250)
-  --seeds <paths>       Comma-separated routes no link reaches, e.g. "/legacy,/404"
+  --seeds <paths>       Comma-separated routes no link reaches, e.g. "/legacy,/404"; "auto"
+                        adds every static route of the app's router (TanStack, Next.js)
   --now <iso>           Time the app starts at (default: real time)
   --tz <zone>           Time zone (default Asia/Ho_Chi_Minh)
   --allow-4xx <list>    Comma-separated expected 4xx: "404" or "GET /api/me"
@@ -94,6 +98,7 @@ async function main() {
       mode: { type: 'string' },
       update: { type: 'boolean', default: false },
       quick: { type: 'boolean', default: false },
+      force: { type: 'boolean', default: false },
       reset: { type: 'boolean', default: false },
       affected: { type: 'string' },
       seed: { type: 'string' },
@@ -119,6 +124,8 @@ async function main() {
     process.exit(isEmptyDiff(diff) ? 0 : 1)
   }
 
+  if (positionals[0] === 'init') process.exit(await init(process.cwd(), { force: values.force }))
+
   // Paths given on the command line are the caller's; everything else is read from
   // the config's directory, so a run from inside a monorepo package works the same.
   const configPath = values.config ? path.resolve(values.config) : findConfig(process.cwd())
@@ -135,6 +142,16 @@ async function main() {
   const url = values.url ?? file.url
   const log = (line: string) => process.stderr.write(`  ${line}\n`)
 
+  /** "auto" in the seeds becomes the router's static routes (the entry itself left out). */
+  const expandSeeds = (seeds: string[] | undefined, entry: string) => {
+    if (!seeds?.includes('auto')) return seeds
+    const found = discoverRoutes(root)
+    if (!found) log('seeds: "auto" found no router (TanStack Router, Next.js): no routes added')
+    else log(`seeds: ${found.routes.length} routes from ${found.source}`)
+    const entryPath = new URL(entry).pathname
+    return [...new Set(seeds.flatMap((s) => (s === 'auto' ? (found?.routes ?? []) : [s])))].filter((r) => r !== entryPath)
+  }
+
   /** Starts the app when the config says how, then signs each context in once. */
   const prepare = async (target: string): Promise<ContextConfig[] | undefined> => {
     if (file.webServer) await ensureWebServer(file.webServer, target, { cwd: process.cwd(), out, log })
@@ -147,7 +164,7 @@ async function main() {
         continue
       }
       log(`auth: signing in ${ctx.name}`)
-      const storageState = await signIn(target, ctx.auth, path.join(out, `auth-${ctx.name.replace(/[^\w-]/g, '_')}.json`), { timezoneId: values.tz ?? file.timezone, headed: values.headed })
+      const storageState = await signIn(target, ctx.auth, await authStateFile(ctx.name), { timezoneId: values.tz ?? file.timezone, headed: values.headed })
       signedIn.push({ ...ctx, storageState })
     }
     return signedIn
@@ -322,7 +339,7 @@ async function main() {
     url,
     maxDepth: num(values.depth) ?? (quick ? 1 : file.depth),
     maxSteps: num(values['max-steps']) ?? file.maxSteps,
-    seeds: list(values.seeds) ?? file.seeds,
+    seeds: expandSeeds(list(values.seeds) ?? file.seeds, url),
     contexts,
     now: now ? new Date(now) : undefined,
     timezoneId: values.tz ?? file.timezone,

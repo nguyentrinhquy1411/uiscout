@@ -135,6 +135,16 @@ export function collectElements(): RawElement[] {
         return button ? nameOf(button) || 'submit' : null
       })(),
       box: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) },
+      field: el.matches('input,textarea')
+        ? {
+            type: el.tagName === 'TEXTAREA' ? 'textarea' : (el as HTMLInputElement).type,
+            hints: [el.getAttribute('name'), el.id, el.getAttribute('autocomplete'), el.getAttribute('inputmode'), el.getAttribute('placeholder'), nameOf(el)].filter(Boolean).join(' ').toLowerCase(),
+            pattern: el.getAttribute('pattern'),
+            min: el.getAttribute('min'),
+            max: el.getAttribute('max'),
+            maxLength: (el as HTMLInputElement).maxLength > 0 ? (el as HTMLInputElement).maxLength : null,
+          }
+        : null,
     })
   }
   return out

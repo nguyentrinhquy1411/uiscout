@@ -42,6 +42,14 @@
       "types": "./src/vite-plugin.d.ts",
       "default": "./src/vite-plugin.js"
     },
+    "./webpack": {
+      "types": "./src/webpack-loader.d.ts",
+      "default": "./src/webpack-loader.js"
+    },
+    "./next": {
+      "types": "./src/next-plugin.d.ts",
+      "default": "./src/next-plugin.js"
+    },
     "./adapter": {
       "types": "./dist/adapter.d.ts",
       "default": "./dist/adapter.js"

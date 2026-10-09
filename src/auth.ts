@@ -1,4 +1,6 @@
-import { mkdir } from 'node:fs/promises'
+import { rmSync } from 'node:fs'
+import { chmod, mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { chromium } from 'playwright'
 import { type AuthConfig, runSetup } from './config.ts'
@@ -9,8 +11,8 @@ import { type AuthConfig, runSetup } from './config.ts'
  * which works for session cookies; setup steps, run after every page load,
  * suit sessions kept in memory instead.
  *
- * The file holds a live session: it is written under the run's output directory,
- * which belongs in .gitignore.
+ * The file holds a live session, so it never goes where reports go (CI uploads
+ * those): see authStateFile.
  */
 export async function signIn(
   url: string,
@@ -32,10 +34,26 @@ export async function signIn(
       })
     }
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {})
-    await mkdir(path.dirname(file), { recursive: true })
     await context.storageState({ path: file })
+    await chmod(file, 0o600)
     return file
   } finally {
     await browser.close()
   }
+}
+
+let privateDir: string | undefined
+
+/**
+ * Where a context's sign-in is kept for this run: a private temporary directory
+ * (owner only), removed when uiscout exits, so a live session never lands in
+ * the output directory that CI uploads as an artifact.
+ */
+export async function authStateFile(context: string): Promise<string> {
+  if (!privateDir) {
+    const dir = await mkdtemp(path.join(tmpdir(), 'uiscout-auth-'))
+    privateDir = dir
+    process.once('exit', () => rmSync(dir, { recursive: true, force: true }))
+  }
+  return path.join(privateDir, `${context.replace(/[^\w-]/g, '_')}.json`)
 }

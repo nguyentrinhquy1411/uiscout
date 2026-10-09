@@ -61,7 +61,11 @@ export interface FileConfig {
   concurrency?: number
   now?: string
   timezone?: string
-  /** Routes no link reaches, walked from the entry through the history API. */
+  /**
+   * Routes no link reaches, walked from the entry through the history API.
+   * "auto" stands for every static route the app's router declares
+   * (TanStack Router, Next.js app or pages router).
+   */
   seeds?: string[]
   contexts?: ContextConfig[]
   block?: string[]
@@ -145,9 +149,22 @@ export async function runSetup(page: Page, steps: SetupStep[], origin: string): 
       else if ('eval' in step) await page.evaluate(step.eval)
       await page.waitForLoadState('domcontentloaded')
     } catch (err) {
-      throw new Error(`setup step ${i + 1} ${JSON.stringify(step)} failed: ${(err as Error).message.split('\n')[0]}`)
+      throw new Error(`setup step ${i + 1} (${describeStep(step)}) failed: ${(err as Error).message.split('\n')[0]}`)
     }
   }
+}
+
+/**
+ * A step as it may appear in a report: what is typed or evaluated is left out,
+ * since it may be a password from ${ENV_VAR} and reports get uploaded.
+ */
+function describeStep(step: SetupStep): string {
+  if ('goto' in step) return `goto ${step.goto}`
+  if ('route' in step) return `route ${step.route}`
+  if ('click' in step) return `click "${step.click}"`
+  if ('fill' in step) return `fill "${step.fill}"`
+  if ('press' in step) return `press ${step.press}`
+  return 'eval'
 }
 
 /**

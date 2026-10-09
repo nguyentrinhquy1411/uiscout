@@ -124,6 +124,12 @@ describe('contexts', () => {
     expect(run.graph.nodes.map((n) => n.id)).not.toContain('/login.html')
   }, 60_000)
 
+  it('never repeats what a failed step typed: it may be a password', async () => {
+    const run = await crawl({ url: zoo.url, maxDepth: 0, a11y: false, contexts: [{ name: 'x', setup: [{ fill: 'No such field', text: 'hunter2' }] }] })
+    expect(run.findings[0].message).toContain('fill "No such field"')
+    expect(JSON.stringify(run.findings)).not.toContain('hunter2')
+  }, 60_000)
+
   it('says where a sign-in stopped when it does not get through', async () => {
     const file = path.join(tmpdir(), `uiscout-auth-fail-${process.pid}.json`)
     await expect(signIn(`${zoo.url}login.html`, { steps: [{ fill: 'Name', text: 'ann' }], waitFor: '/members' }, file)).rejects.toThrow(/stopped at \/login.html/)
@@ -132,7 +138,7 @@ describe('contexts', () => {
   it('reports a setup that cannot run instead of walking the wrong state', async () => {
     const run = await crawl({ url: zoo.url, maxDepth: 0, a11y: false, contexts: [{ name: 'broken', setup: [{ click: 'No such button' }] }] })
     expect(run.findings[0]).toMatchObject({ oracle: 'transition', severity: 'error' })
-    expect(run.findings[0].message).toContain('setup step 1')
+    expect(run.findings[0].message).toContain('setup step 1 (click "No such button")')
   }, 60_000)
 })
 

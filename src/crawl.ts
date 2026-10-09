@@ -1,6 +1,7 @@
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
 import { type Snapshots, snapshotOf } from './baseline.ts'
 import { type ContextConfig, pushRoute, runSetup } from './config.ts'
+import { valueFor } from './fill.ts'
 import { elementId, fingerprintOf, locate, routeOf, safetyOf, safetyOfText } from './identity.ts'
 import { installNetworkMode, type NetworkMode, type Recordings } from './network.ts'
 import { checkA11y } from './oracles/a11y.ts'
@@ -439,7 +440,7 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
         // Enter submits the field's form through its default button; a destructive button
         // ("Delete account") must not be pressed that way when it would never be clicked.
         const enter = network === 'replay' || !(target.submit && safetyOfText(target.submit) === 'destructive')
-        const step: Step = target.role === 'textbox' ? { kind: 'fill', fp, text: fillText, enter } : { kind: 'click', fp }
+        const step: Step = target.role === 'textbox' ? { kind: 'fill', fp, text: valueFor(target.field, fillText), enter } : { kind: 'click', fp }
 
         // Find it again: an earlier step may have re-rendered the screen.
         await returnHere()
@@ -481,7 +482,7 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
         addEdge({
           from: node,
           to,
-          action: step.kind === 'fill' ? { type: 'fill', element: elId, text: fillText } : { type: 'click', element: elId },
+          action: step.kind === 'fill' ? { type: 'fill', element: elId, text: step.text } : { type: 'click', element: elId },
           delayed: settledAt !== to,
           safety,
           api: monitor.api,
