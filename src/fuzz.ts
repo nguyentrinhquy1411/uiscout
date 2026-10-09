@@ -16,6 +16,8 @@ import type { Finding, Step } from './types.ts'
 
 export interface FuzzOptions extends MonitorOptions {
   url: string
+  /** Saved sign-in every walk starts from (see AuthConfig). */
+  storageState?: string
   seed: number
   /** Independent walks, each from a fresh browser context. */
   runs?: number
@@ -75,7 +77,7 @@ export async function fuzz(options: FuzzOptions): Promise<FuzzFailure[]> {
    * picks each action with `random`. Stops at the first failure.
    */
   const walk = async (random: (() => number) | null, script: Step[] | null): Promise<WalkResult> => {
-    const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: 'en-US', reducedMotion: 'reduce', permissions: ['clipboard-read', 'clipboard-write'] })
+    const context = await browser.newContext({ storageState: options.storageState, viewport: { width: 1280, height: 800 }, locale: 'en-US', reducedMotion: 'reduce', permissions: ['clipboard-read', 'clipboard-write'] })
     await context.addInitScript(installMutationCounter)
     await installNetworkMode(context, network, origin, recordings)
     for (const glob of options.block ?? []) await context.route(glob, (route) => route.abort('blockedbyclient'))

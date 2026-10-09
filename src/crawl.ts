@@ -220,8 +220,9 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
 
   const browser: Browser = await chromium.launch({ headless: !options.headed })
 
-  const newContext = async (): Promise<BrowserContext> => {
+  const newContext = async (storageState?: string): Promise<BrowserContext> => {
     const context = await browser.newContext({
+      storageState,
       viewport: VIEWPORT,
       locale: 'en-US',
       timezoneId: options.timezoneId ?? 'Asia/Ho_Chi_Minh',
@@ -274,6 +275,8 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
 
   for (const ctx of contexts) {
     const prefix = tagged ? `[${ctx.name}] ` : ''
+    const started = Date.now()
+    let explored = 0
     const paths = new Map<string, Step[]>()
     /**
      * Controls already on the entry screen when it loads (the app rail, a search
@@ -325,7 +328,7 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
     }
     // The entry node, then every seed route, as starting points.
     for (const start of options.only ? [] : [null, ...(options.seeds ?? [])]) {
-      const context = await newContext()
+      const context = await newContext(ctx.storageState)
       try {
         const path: Step[] = start ? [{ kind: 'route', path: start }] : []
         const { page, monitor } = await open(context, path, start ?? entry.pathname)
@@ -348,9 +351,9 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
     const explore = async (node: string, depth: number) => {
       const path = paths.get(node)!
       const labels = nodes.get(node)!.path
-      log(`${prefix}node ${node} (depth ${depth})`)
+      log(`${prefix}node ${node} (depth ${depth})${progress()}`)
 
-      let context = await newContext()
+      let context = await newContext(ctx.storageState)
       let { page, monitor, ok, states: pathStates } = await open(context, path, node)
       /**
        * Steps taken on this page that stayed on this node (typed text, a toggle).
@@ -387,7 +390,7 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
       const reset = async () => {
         findings.push(...monitor.findings)
         await context.close()
-        context = await newContext()
+        context = await newContext(ctx.storageState)
         ;({ page, monitor, states: pathStates } = await open(context, path, node))
         dirt = []
       }
@@ -495,6 +498,23 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
       await context.close()
     }
 
+    /**
+     * Where the walk stands: screens done of those found so far, actions used of
+     * the budget, and a rough time left from the average screen so far (the
+     * queue grows as screens are found, so it's a floor, not a promise).
+     */
+    const progress = () => {
+      const known = explored + active + queue.length
+      const elapsed = (Date.now() - started) / 1000
+      let eta = ''
+      if (explored >= 2) {
+        const perNode = elapsed / explored
+        const left = Math.ceil(((queue.length + active) * perNode) / (options.concurrency ?? 4))
+        eta = ` · ~${left < 60 ? `${left}s` : `${Math.round(left / 60)}m`} left`
+      }
+      return ` · ${explored}/${known} screens · ${steps}/${maxSteps} actions · ${Math.round(elapsed)}s${eta}`
+    }
+
     // Nodes are independent (each has its own context), so several are explored at once.
     let active = 0
     const worker = async () => {
@@ -512,6 +532,7 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
           findings.push({ oracle: 'transition', severity: 'warning', at: `${prefix}load ${next.node}`, message: `Exploration stopped: ${(err as Error).message.split('\n')[0]}` })
         } finally {
           active--
+          explored++
         }
       }
     }

@@ -50,6 +50,8 @@ export interface AdapterFailure {
 
 export interface AdapterRunOptions {
   url: string
+  /** Saved sign-in every sequence starts from (see AuthConfig). */
+  storageState?: string
   seed: number
   runs?: number
   length?: number
@@ -79,7 +81,7 @@ export async function runAdapter<S>(adapter: WidgetAdapter<S>, options: AdapterR
 
   /** One sequence: random when `script` is null, else exactly `script`. Stops at the first violation. */
   const sequence = async (random: (() => number) | null, script: AdapterStep[] | null, length: number) => {
-    const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: 'en-US', reducedMotion: 'reduce' })
+    const context = await browser.newContext({ storageState: options.storageState, viewport: { width: 1280, height: 800 }, locale: 'en-US', reducedMotion: 'reduce' })
     await context.addInitScript(installMutationCounter)
     // Apps publish debug hooks only when the runner is there to read them.
     await context.addInitScript(() => {

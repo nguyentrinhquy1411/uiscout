@@ -1,4 +1,6 @@
+import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
+import path from 'node:path'
 import type { Page } from 'playwright'
 
 /*
@@ -23,7 +25,33 @@ export type SetupStep =
 
 export interface ContextConfig {
   name: string
+  /** Run after every page load: for state kept in memory (a store, a route). */
   setup?: SetupStep[]
+  /**
+   * Run once, in a fresh browser, before the walk; the cookies and storage it
+   * leaves are where every screen starts. For sign-in with a session cookie.
+   */
+  auth?: AuthConfig
+  /** Saved storage state every page of this context starts from (set by the CLI after auth). */
+  storageState?: string
+}
+
+export interface AuthConfig {
+  steps: SetupStep[]
+  /** Wait until the URL path starts with this after the steps (e.g. "/" once signed in). */
+  waitFor?: string
+}
+
+/** The app to test, started by uiscout when it isn't already running (like Playwright's webServer). */
+export interface WebServerConfig {
+  /** Shell command, run from the config's directory, e.g. "pnpm dev". */
+  command: string
+  /** Polled until it answers; default: the config's url. */
+  url?: string
+  /** Seconds to wait for it. Default 60. */
+  timeout?: number
+  /** Use a server already answering at url instead of starting one. Default true. */
+  reuseExisting?: boolean
 }
 
 export interface FileConfig {
@@ -49,15 +77,55 @@ export interface FileConfig {
   network?: 'live' | 'record' | 'replay'
   /** Where the accepted graph and snapshots live (default "uiscout"). */
   baseline?: string
+  /** Sign-in for the default context, run once (see ContextConfig.auth). */
+  auth?: AuthConfig
+  webServer?: WebServerConfig
+  /** Where *.rules.ts, *.intent.md and *.adapter.ts are looked for, relative to the config. Default: its directory. */
+  root?: string
 }
 
-export async function loadConfig(path: string): Promise<FileConfig> {
-  const text = await readFile(path, 'utf8')
-  try {
-    return JSON.parse(text) as FileConfig
-  } catch (err) {
-    throw new Error(`${path}: ${(err as Error).message}`)
+export const CONFIG_FILE = 'uiscout.config.json'
+
+/**
+ * The nearest uiscout.config.json from `dir` upwards, stopping at a repository
+ * root (a .git entry), so a run from anywhere inside a monorepo package finds it.
+ */
+export function findConfig(dir: string): string | undefined {
+  for (let current = path.resolve(dir); ; ) {
+    const candidate = path.join(current, CONFIG_FILE)
+    if (existsSync(candidate)) return candidate
+    const parent = path.dirname(current)
+    if (existsSync(path.join(current, '.git')) || parent === current) return undefined
+    current = parent
   }
+}
+
+/**
+ * "${NAME}" in any string value is replaced by that environment variable, so
+ * credentials for sign-in steps stay out of the file. A missing one is an error.
+ */
+export function interpolateEnv<T>(value: T, env: NodeJS.ProcessEnv = process.env): T {
+  if (typeof value === 'string') {
+    return value.replace(/\$\{([A-Z0-9_]+)\}/g, (_, name: string) => {
+      const v = env[name]
+      if (v === undefined) throw new Error(`${CONFIG_FILE} uses \${${name}}, which is not set in the environment`)
+      return v
+    }) as T
+  }
+  if (Array.isArray(value)) return value.map((v) => interpolateEnv(v, env)) as T
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, interpolateEnv(v, env)])) as T
+  return value
+}
+
+export async function loadConfig(file: string): Promise<FileConfig> {
+  const text = await readFile(file, 'utf8')
+  let parsed: FileConfig
+  try {
+    parsed = JSON.parse(text) as FileConfig
+  } catch (err) {
+    throw new Error(`${file}: ${(err as Error).message}`)
+  }
+  return interpolateEnv(parsed)
 }
 
 /** Runs one context's setup on a freshly loaded page. Throws with the step that failed. */

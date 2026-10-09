@@ -1,4 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { signIn } from '../src/auth.ts'
 import { type CrawlResult, crawl } from '../src/crawl.ts'
 import { renderText } from '../src/report.ts'
 import type { GraphEdge } from '../src/types.ts'
@@ -110,6 +113,20 @@ describe('contexts', () => {
     expect(edge('please-log-in')).toMatchObject({ from: '/members.html', to: '/login.html', contexts: ['guest'] })
     expect(edge('members-area')).toMatchObject({ from: '/members.html', to: '/clean.html', contexts: ['member'] })
     expect(run.graph.nodes.find((n) => n.id === '/members.html')?.contexts).toEqual(['guest', 'member'])
+  }, 60_000)
+
+  it('signs in once and starts every screen from the saved state', async () => {
+    const file = path.join(tmpdir(), `uiscout-auth-${process.pid}.json`)
+    await signIn(`${zoo.url}login.html`, { steps: [{ fill: 'Name', text: 'ann' }, { click: 'Log in' }], waitFor: '/members' }, file)
+    const run = await crawl({ url: `${zoo.url}members.html`, maxDepth: 1, settleMs: 150, a11y: false, contexts: [{ name: 'member', storageState: file }] })
+    expect(run.graph.edges.find((e) => elOf(e).includes('members-area'))).toMatchObject({ from: '/members.html', to: '/clean.html' })
+    // No setup ran: the login page was never loaded during the walk.
+    expect(run.graph.nodes.map((n) => n.id)).not.toContain('/login.html')
+  }, 60_000)
+
+  it('says where a sign-in stopped when it does not get through', async () => {
+    const file = path.join(tmpdir(), `uiscout-auth-fail-${process.pid}.json`)
+    await expect(signIn(`${zoo.url}login.html`, { steps: [{ fill: 'Name', text: 'ann' }], waitFor: '/members' }, file)).rejects.toThrow(/stopped at \/login.html/)
   }, 60_000)
 
   it('reports a setup that cannot run instead of walking the wrong state', async () => {

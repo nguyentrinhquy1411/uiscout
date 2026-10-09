@@ -6,7 +6,9 @@ import { parseArgs } from 'node:util'
 import { loadAdapters, runAdapter } from './adapter.ts'
 import { changedSince, type Selection, selectAffected } from './affected.ts'
 import { compareToBaseline, diffGraphs, isEmptyDiff, loadBaseline, saveBaseline, snapshotFile, type Snapshots } from './baseline.ts'
-import { type FileConfig, loadConfig } from './config.ts'
+import { signIn } from './auth.ts'
+import { type ContextConfig, type FileConfig, findConfig, loadConfig } from './config.ts'
+import { ensureWebServer } from './web-server.ts'
 import { loadRecordings, type NetworkMode, saveRecordings } from './network.ts'
 import { crawl } from './crawl.ts'
 import { fuzz } from './fuzz.ts'
@@ -33,8 +35,10 @@ const USAGE = `Usage: uiscout check [--url <url>] [options]
        uiscout usage report [<graph.json>]
        uiscout adapters [--url <url>] [--dir <dir>] [--seed <n>] [--runs <n>] [--length <n>]
 
-  --config <file>       Settings file (default ./uiscout.config.json when it exists)
-  --url <url>           Entry URL of a running app
+  --config <file>       Settings file (default: the nearest uiscout.config.json, looking up
+                        to the repository root; relative paths are read from its directory)
+  --url <url>           Entry URL of the app (started first when the config has webServer)
+  --quick               A fast first look: one action deep, no axe, no timer fast-forward
   --out <dir>           Where to write graph.json, findings.json, report.txt, report.md (default .uiscout)
   --depth <n>           Actions deep from the entry (default 2)
   --max-steps <n>       Total actions (default 250)
@@ -60,7 +64,8 @@ const USAGE = `Usage: uiscout check [--url <url>] [options]
   --no-screenshots      Don't screenshot screens
   --headed              Show the browser
 
-Contexts (personas with setup steps) are configured in the settings file only.
+Contexts (personas with setup steps), sign-in (auth) and webServer are configured in
+the settings file only.
 `
 
 const list = (s: string | undefined) => s?.split(',').map((x) => x.trim()).filter(Boolean)
@@ -72,7 +77,7 @@ async function main() {
     options: {
       config: { type: 'string' },
       url: { type: 'string' },
-      out: { type: 'string', default: '.uiscout' },
+      out: { type: 'string' },
       depth: { type: 'string' },
       'max-steps': { type: 'string' },
       seeds: { type: 'string' },
@@ -88,6 +93,7 @@ async function main() {
       baseline: { type: 'string' },
       mode: { type: 'string' },
       update: { type: 'boolean', default: false },
+      quick: { type: 'boolean', default: false },
       reset: { type: 'boolean', default: false },
       affected: { type: 'string' },
       seed: { type: 'string' },
@@ -113,9 +119,39 @@ async function main() {
     process.exit(isEmptyDiff(diff) ? 0 : 1)
   }
 
-  const configPath = values.config ?? (existsSync('uiscout.config.json') ? 'uiscout.config.json' : undefined)
+  // Paths given on the command line are the caller's; everything else is read from
+  // the config's directory, so a run from inside a monorepo package works the same.
+  const configPath = values.config ? path.resolve(values.config) : findConfig(process.cwd())
+  for (const key of ['out', 'baseline', 'dir'] as const) if (values[key]) values[key] = path.resolve(values[key])
+  for (let i = 1; i < positionals.length; i++) if (existsSync(positionals[i])) positionals[i] = path.resolve(positionals[i])
+  if (configPath) {
+    if (path.dirname(configPath) !== process.cwd()) process.stderr.write(`  config: ${path.relative(process.cwd(), configPath)}\n`)
+    process.chdir(path.dirname(configPath))
+  }
+  const out = values.out ?? path.resolve('.uiscout')
+  values.out = out
   const file: FileConfig = configPath ? await loadConfig(configPath) : {}
+  const root = path.resolve(file.root ?? '.')
   const url = values.url ?? file.url
+  const log = (line: string) => process.stderr.write(`  ${line}\n`)
+
+  /** Starts the app when the config says how, then signs each context in once. */
+  const prepare = async (target: string): Promise<ContextConfig[] | undefined> => {
+    if (file.webServer) await ensureWebServer(file.webServer, target, { cwd: process.cwd(), out, log })
+    const contexts = file.contexts ?? (file.auth ? [{ name: 'default', auth: file.auth }] : undefined)
+    if (!contexts) return undefined
+    const signedIn: ContextConfig[] = []
+    for (const ctx of contexts) {
+      if (!ctx.auth) {
+        signedIn.push(ctx)
+        continue
+      }
+      log(`auth: signing in ${ctx.name}`)
+      const storageState = await signIn(target, ctx.auth, path.join(out, `auth-${ctx.name.replace(/[^\w-]/g, '_')}.json`), { timezoneId: values.tz ?? file.timezone, headed: values.headed })
+      signedIn.push({ ...ctx, storageState })
+    }
+    return signedIn
+  }
   if (positionals[0] === 'usage') {
     // The usage overlay (§10 "After deploy"): import counts from uiscout/track or an export, then rank.
     const baselineDir = path.resolve(values.baseline ?? file.baseline ?? 'uiscout')
@@ -151,7 +187,7 @@ async function main() {
 
   if (positionals[0] === 'mcp') {
     // The MCP server for coding agents (§11): stdio, no model, runs until the client disconnects.
-    await startMcp(path.resolve(values.dir ?? '.'))
+    await startMcp(values.dir ?? root)
     return
   }
 
@@ -192,16 +228,17 @@ async function main() {
   if (positionals[0] === 'adapters' && url) {
     // Widget adapters (§8): seeded action sequences, invariants after every action, shrunk failures.
     const seed = num(values.seed) ?? Math.floor(Math.random() * 1e9)
-    const adapters = await loadAdapters(path.resolve(values.dir ?? '.'))
+    const adapters = await loadAdapters(values.dir ?? root)
     if (!adapters.length) throw new Error('no *.adapter.ts files found')
     const now = values.now ?? file.now
+    const storageState = (await prepare(url))?.[0]?.storageState
     const lines: string[] = []
     let failed = 0
     for (const adapter of adapters) {
       const failures = await runAdapter(adapter, {
-        url, seed, runs: num(values.runs), length: num(values.length),
+        url, seed, runs: num(values.runs), length: num(values.length), storageState,
         now: now ? new Date(now) : undefined,
-        log: (line) => process.stderr.write(`  ${line}\n`),
+        log,
       })
       failed += failures.length
       lines.push(`${adapter.id}: ${failures.length ? `${failures.length} failure${failures.length === 1 ? '' : 's'}` : 'ok'}`)
@@ -219,12 +256,14 @@ async function main() {
     const seed = num(values.seed) ?? Math.floor(Math.random() * 1e9)
     const network = (values.mode ?? file.network ?? 'live') as NetworkMode
     const baselineDir = path.resolve(values.baseline ?? file.baseline ?? 'uiscout')
+    const storageState = (await prepare(url))?.[0]?.storageState
     const failures = await fuzz({
       url,
       seed,
+      storageState,
       runs: num(values.runs),
       length: num(values.length),
-      rules: values['no-rules'] ? [] : await loadRules(process.cwd()),
+      rules: values['no-rules'] ? [] : await loadRules(root),
       block: list(values.block) ?? file.block,
       allow4xx: list(values['allow-4xx']) ?? file.allow4xx,
       ignoreConsole: file.ignoreConsole,
@@ -232,10 +271,9 @@ async function main() {
       recordings: network === 'replay' ? await loadRecordings(path.join(baselineDir, 'recordings.json')) : undefined,
       fillText: file.fillText,
       fastForwardMs: num(values['fast-forward']) ?? file.fastForwardMs,
-      log: (line) => process.stderr.write(`  ${line}\n`),
+      log,
     })
-    const out = path.resolve(values.out)
-    await mkdir(out, { recursive: true })
+        await mkdir(out, { recursive: true })
     await writeFile(path.join(out, 'fuzz.json'), `${JSON.stringify({ seed, failures }, null, 2)}\n`)
     const lines = [`uiscout fuzz (seed ${seed}): ${failures.length} failure${failures.length === 1 ? '' : 's'}`]
     for (const f of failures) {
@@ -252,15 +290,18 @@ async function main() {
   }
 
   const started = Date.now()
+  const contexts = await prepare(url)
   const now = values.now ?? file.now
+  // --quick: the first look, in seconds rather than minutes; flags given still win.
+  const quick = values.quick
   const baselineDir = path.resolve(values.baseline ?? file.baseline ?? 'uiscout')
   const network = (values.mode ?? file.network ?? 'live') as NetworkMode
   if (!['live', 'record', 'replay'].includes(network)) throw new Error(`--mode must be live, record or replay, not "${network}"`)
   const recordingsFile = path.join(baselineDir, 'recordings.json')
   const recordings = network === 'replay' ? await loadRecordings(recordingsFile) : {}
   // Invariants (§7B) and the intent lines that link to them (§9), from the project.
-  const rules = values['no-rules'] ? [] : await loadRules(process.cwd())
-  const intentLines = values['no-rules'] ? [] : await loadIntent(process.cwd())
+  const rules = values['no-rules'] ? [] : await loadRules(root)
+  const intentLines = values['no-rules'] ? [] : await loadIntent(root)
   if (rules.length) process.stderr.write(`  rules: ${rules.map((r) => r.name).join(', ')}\n`)
 
   // Affected-only (§10): needs a baseline that knows each screen's sources and paths.
@@ -279,10 +320,10 @@ async function main() {
   if (network === 'replay' && !Object.keys(recordings).length) process.stderr.write(`  no recordings in ${recordingsFile}: every API call will be reported\n`)
   const result = await crawl({
     url,
-    maxDepth: num(values.depth) ?? file.depth,
+    maxDepth: num(values.depth) ?? (quick ? 1 : file.depth),
     maxSteps: num(values['max-steps']) ?? file.maxSteps,
     seeds: list(values.seeds) ?? file.seeds,
-    contexts: file.contexts,
+    contexts,
     now: now ? new Date(now) : undefined,
     timezoneId: values.tz ?? file.timezone,
     allow4xx: list(values['allow-4xx']) ?? file.allow4xx,
@@ -290,8 +331,8 @@ async function main() {
     allowOverlap: values['allow-overlap'] ?? file.allowOverlap,
     block: list(values.block) ?? file.block,
     fillText: file.fillText,
-    fastForwardMs: num(values['fast-forward']) ?? file.fastForwardMs,
-    a11y: values['no-a11y'] ? false : file.a11y,
+    fastForwardMs: num(values['fast-forward']) ?? (quick ? 0 : file.fastForwardMs),
+    a11y: values['no-a11y'] || quick ? false : file.a11y,
     concurrency: num(values.concurrency) ?? file.concurrency,
     network,
     recordings,
@@ -300,7 +341,7 @@ async function main() {
     // Pixels can't be redacted: off in CI (artifacts get uploaded) unless asked for.
     screenshots: values.screenshots || (!values['no-screenshots'] && !process.env.CI),
     headed: values.headed,
-    log: (line) => process.stderr.write(`  ${line}\n`),
+    log,
   })
 
   // The baseline (§7C, §10): accept this run, or judge it against the last accepted one.
@@ -338,8 +379,7 @@ async function main() {
     }
   }
 
-  const out = path.resolve(values.out)
-  await mkdir(out, { recursive: true })
+    await mkdir(out, { recursive: true })
   const text = renderText(result, diffInfo, intent, usageInfo)
   await writeFile(path.join(out, 'graph.json'), `${JSON.stringify(result.graph, null, 2)}\n`)
   await writeFile(path.join(out, 'findings.json'), `${JSON.stringify({ findings: result.findings, skipped: result.skipped, healed: result.healed, restless: result.restless, flaky: result.flaky, ruleResults: result.ruleResults }, null, 2)}\n`)
