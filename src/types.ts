@@ -110,4 +110,11 @@ export interface Finding {
   message: string
   /** For a rule violation: the steps from the entry to the state where it broke. */
   trace?: string[]
+  /** How to see it again by hand, one line: "open / → click "Cart" → click "Pay"". */
+  repro?: string
+  /** Where the control acted on is in the source ("src/Cart.tsx:48"), with the identity plugin. */
+  source?: string
+  /** The same path, machine-readable: what uiscout export turns into a Playwright test. */
+  steps?: Step[]
+  context?: string
 }

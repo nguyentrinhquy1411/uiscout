@@ -50,9 +50,11 @@ export function renderText(result: CrawlResult, diff?: { diff: GraphDiff; agains
   const lines: string[] = []
 
   lines.push(`uiscout: ${distinct(errors)} errors, ${distinct(warnings)} warnings · ${nodes.length} nodes, ${edges.length} edges, ${result.steps} steps`)
+  const screens = byScreen(errors)
+  if (screens.length) lines.push(`Screens with errors: ${screens.slice(0, 8).map(([s, n]) => `${s} (${n})`).join(' · ')}${screens.length > 8 ? ` · +${screens.length - 8} more` : ''}`)
   lines.push('')
   if (diff) lines.push(...renderDiff(diff.diff, diff.against))
-  section(lines, 'Errors', errors)
+  section(lines, 'Errors', errors, true)
   section(lines, 'Warnings', warnings)
   section(lines, 'Changes', result.findings.filter((f) => f.severity === 'info'))
   if (intent) lines.push(...renderIntent(intent))
@@ -83,24 +85,53 @@ export function renderText(result: CrawlResult, diff?: { diff: GraphDiff; agains
   return lines.join('\n')
 }
 
-function section(lines: string[], title: string, findings: Finding[]): void {
-  if (!findings.length) return
-  // One entry per defect: the same message on seven screens is one bug seen seven times.
+/** The screen a finding happened on: "load /x" and "/x → click a.b" are both "/x". */
+export function screenOf(at: string): string {
+  return at.replace(/^(\[[^\]]*\] )?load /, '$1').split(' → ')[0]
+}
+
+/** Screens by how many distinct errors they have, most first. */
+function byScreen(errors: Finding[]): Array<[string, number]> {
+  const counts = new Map<string, Set<string>>()
+  for (const f of errors) {
+    const screen = screenOf(f.at)
+    counts.set(screen, (counts.get(screen) ?? new Set()).add(`${f.oracle}|${f.message}`))
+  }
+  return [...counts].map(([s, set]): [string, number] => [s, set.size]).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+}
+
+/**
+ * One entry per defect: the same message on seven screens is one bug seen seven
+ * times. The same grouping numbers errors for uiscout export.
+ */
+export function groupFindings(findings: Finding[]): Finding[][] {
   const byMessage = new Map<string, Finding[]>()
   for (const f of findings) byMessage.set(`${f.oracle}|${f.message}`, [...(byMessage.get(`${f.oracle}|${f.message}`) ?? []), f])
-  lines.push(`${title} (${byMessage.size})`)
+  // The shortest way to see it first: that's the one to reproduce.
+  return [...byMessage.values()].map((list) => [...list].sort((a, b) => (a.steps?.length ?? 99) - (b.steps?.length ?? 99)))
+}
+
+function section(lines: string[], title: string, findings: Finding[], numbered = false): void {
+  if (!findings.length) return
+  const groups = groupFindings(findings)
+  lines.push(`${title} (${groups.length})${numbered ? ' · uiscout export <n> writes a Playwright test for one' : ''}`)
+  const pad = numbered ? 17 : 12
   let shown = 0
-  for (const list of byMessage.values()) {
+  for (const list of groups) {
     if (shown++ >= MAX_PER_SECTION) break
     const { oracle, message } = list[0]
-    lines.push(`  ${oracle.padEnd(12)} ${message}`)
+    lines.push(`  ${numbered ? `${String(shown).padStart(3)}  ` : ''}${oracle.padEnd(12)} ${message}`)
     const where = list.map((f) => f.at)
-    lines.push(`  ${''.padEnd(12)} at ${where.slice(0, 3).join(' · ')}${where.length > 3 ? ` · +${where.length - 3} more` : ''}`)
+    const blank = ''.padEnd(pad)
+    lines.push(`  ${blank} at ${where.slice(0, 3).join(' · ')}${where.length > 3 ? ` · +${where.length - 3} more` : ''}`)
+    const source = list.find((f) => f.source)?.source
+    if (source) lines.push(`  ${blank} in ${source}`)
     // A rule violation is only reproducible with the steps that led to it.
     const trace = list.find((f) => f.trace)?.trace
-    if (trace) lines.push(`  ${''.padEnd(12)} via ${trace.join(' → ')}`)
+    if (trace) lines.push(`  ${blank} via ${trace.join(' → ')}`)
+    else if (list[0].repro) lines.push(`  ${blank} repro ${list[0].repro}`)
   }
-  if (byMessage.size > MAX_PER_SECTION) lines.push(`  … ${byMessage.size - MAX_PER_SECTION} more in findings.json`)
+  if (groups.length > MAX_PER_SECTION) lines.push(`  … ${groups.length - MAX_PER_SECTION} more in findings.json`)
   lines.push('')
 }
 
@@ -131,15 +162,15 @@ export function renderMarkdown(result: CrawlResult, diff?: { diff: GraphDiff; ag
     const changed = renderDiff(diff.diff, diff.against).slice(1).filter((l) => l.trim() && l.trim() !== '(no change)')
     if (changed.length) md.push('**Graph changes**', '', ...fence('diff', changed.map((l) => l.replace(/^ {2}/, '').replace(/^~/, '!')).join('\n')), '')
   }
-  const byMessage = new Map<string, Finding[]>()
-  for (const f of errors) byMessage.set(`${f.oracle}|${f.message}`, [...(byMessage.get(`${f.oracle}|${f.message}`) ?? []), f])
-  if (byMessage.size) {
+  const groups = groupFindings(errors)
+  if (groups.length) {
     md.push('**Errors**', '')
-    for (const list of [...byMessage.values()].slice(0, MAX_MD_ITEMS)) {
-      const { oracle, message, at } = list[0]
-      md.push(`- **${oracle}** — ${escapeMd(message)}  \n  <sub>at ${code(at)}${list.length > 1 ? ` and ${list.length - 1} more` : ''}</sub>`)
+    for (const [i, list] of groups.slice(0, MAX_MD_ITEMS).entries()) {
+      const { oracle, message, at, repro } = list[0]
+      const source = list.find((f) => f.source)?.source
+      md.push(`${i + 1}. **${oracle}** — ${escapeMd(message)}  \n  <sub>at ${code(at)}${list.length > 1 ? ` and ${list.length - 1} more` : ''}${source ? ` · ${code(source)}` : ''}</sub>${repro ? `  \n  <sub>repro: ${escapeMd(repro)}</sub>` : ''}`)
     }
-    if (byMessage.size > MAX_MD_ITEMS) md.push(`- … ${byMessage.size - MAX_MD_ITEMS} more`)
+    if (groups.length > MAX_MD_ITEMS) md.push(`- … ${groups.length - MAX_MD_ITEMS} more`)
     md.push('')
   }
   if (intent?.total) md.push(`**Intent coverage** ${intent.linked} of ${intent.total} lines backed by a passing rule.`, '')

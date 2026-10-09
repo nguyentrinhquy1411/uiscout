@@ -8,6 +8,7 @@ import { checkA11y } from './oracles/a11y.ts'
 import { checkLayout } from './oracles/layout.ts'
 import { type MonitorOptions, StepMonitor } from './oracles/monitor.ts'
 import { collectElements, hitPoint, installMutationCounter, mutationCount, observePage, openDialog } from './page-scripts.ts'
+import { reproLine } from './repro.ts'
 import { check, type ObservedState, type Rule } from './rules.ts'
 import type { Finding, Fingerprint, Graph, GraphEdge, GraphElement, GraphNode, RawElement, Step } from './types.ts'
 
@@ -151,6 +152,8 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
   const network = options.network ?? 'live'
   const recordings = options.recordings ?? {}
   const tagged = contexts.length > 1
+  /** Every place a finding can be reported at, with the path that gets there: the repro under it. */
+  const actions = new Map<string, { context: string; steps: Step[]; source?: string | null }>()
   const log = options.log ?? (() => {})
 
   const nodes = new Map<string, GraphNode>()
@@ -296,6 +299,7 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
       else if (options.now) await page.clock.setFixedTime(options.now)
       const monitor = new StepMonitor(page, origin, options)
       monitor.begin(`${prefix}load ${label}`)
+      if (!actions.has(`${prefix}load ${label}`)) actions.set(`${prefix}load ${label}`, { context: ctx.name, steps: path })
       await page.goto(entry.href, { waitUntil: 'domcontentloaded' })
       if (ctx.setup?.length) await runSetup(page, ctx.setup, origin)
       if (!(await quiesce(page, monitor, settleMs, quiesceTimeoutMs))) restless.push(`${prefix}load ${label}`)
@@ -457,6 +461,7 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
 
         steps++
         const label = `${prefix}${node} → ${step.kind} ${elId}`
+        actions.set(label, { context: ctx.name, steps: [...path, ...dirt, step], source: found.el.source ?? target.source })
         const before = await observe(page, ctx.name, '(before)')
         monitor.begin(label)
         const failure = await perform(page, step)
@@ -543,6 +548,14 @@ export async function crawl(options: CrawlOptions): Promise<CrawlResult> {
 
   await browser.close()
 
+  for (const f of findings) {
+    const action = actions.get(f.at)
+    if (!action) continue
+    f.repro = reproLine(entry.pathname, action.steps, tagged ? action.context : undefined)
+    f.steps = action.steps
+    f.context = action.context
+    if (action.source) f.source = action.source
+  }
   for (const n of nodes.values()) n.contexts.sort()
   for (const e of edges.values()) e.contexts.sort()
   return {

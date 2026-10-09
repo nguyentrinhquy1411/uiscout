@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CrawlResult } from '../src/crawl.ts'
-import { COMMENT_MARKER, renderMarkdown } from '../src/report.ts'
+import { COMMENT_MARKER, renderMarkdown, renderText, screenOf } from '../src/report.ts'
 
 const result = (findings: CrawlResult['findings']): CrawlResult => ({
   graph: { version: 1, entry: '/', nodes: [{ id: '/', url: '/', path: [], contexts: ['default'] }], elements: [], edges: [] },
@@ -16,7 +16,7 @@ describe('pull request comment', () => {
     ]))
     expect(md.startsWith(COMMENT_MARKER)).toBe(true)
     expect(md).toContain('### uiscout: ❌ 1 error, 1 warning')
-    expect(md).toContain('- **script** — Uncaught Error: \\<boom\\>  \n  <sub>at `/ → click a` and 1 more</sub>')
+    expect(md).toContain('1. **script** — Uncaught Error: \\<boom\\>  \n  <sub>at `/ → click a` and 1 more</sub>')
     expect(md).toContain('<details><summary>Full report</summary>')
   })
 
@@ -46,5 +46,32 @@ describe('pull request comment', () => {
     const end = lines.indexOf(ticks, start + 1)
     expect(lines.findIndex((l) => l.startsWith('# injected'))).toBeGreaterThan(start)
     expect(lines.findLastIndex((l) => l.startsWith('# injected'))).toBeLessThan(end)
+  })
+})
+
+describe('text report', () => {
+  const fp = { tag: 'button', role: 'button', name: 'Pay', testId: null, parents: 'main', cell: '1,1' }
+  const errors: CrawlResult['findings'] = [
+    {
+      oracle: 'network', severity: 'error', at: '/checkout → click checkout.Pay', message: 'POST /api/orders returned 500',
+      source: 'src/Checkout.tsx:48', repro: 'open / → go to /checkout → click "Pay"',
+      steps: [{ kind: 'route', path: '/checkout' }, { kind: 'click', fp }],
+    },
+    { oracle: 'script', severity: 'error', at: 'load /checkout', message: 'Uncaught TypeError' },
+    { oracle: 'script', severity: 'error', at: '[member] load /cart', message: 'Uncaught TypeError' },
+  ]
+
+  it('names the screens with errors, numbers errors, and says where and how', () => {
+    const text = renderText(result(errors))
+    expect(text).toContain('Screens with errors: /checkout (2) · [member] /cart (1)')
+    expect(text).toContain('    1  network      POST /api/orders returned 500')
+    expect(text).toContain('in src/Checkout.tsx:48')
+    expect(text).toContain('repro open / → go to /checkout → click "Pay"')
+  })
+
+  it('reads the screen out of any finding location', () => {
+    expect(screenOf('load /a')).toBe('/a')
+    expect(screenOf('/a → click x.y')).toBe('/a')
+    expect(screenOf('[guest] load /b')).toBe('[guest] /b')
   })
 })

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { existsSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { existsSync, watch } from 'node:fs'
 import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
@@ -8,6 +9,7 @@ import { changedSince, type Selection, selectAffected } from './affected.ts'
 import { compareToBaseline, diffGraphs, isEmptyDiff, loadBaseline, saveBaseline, snapshotFile, type Snapshots } from './baseline.ts'
 import { authStateFile, signIn } from './auth.ts'
 import { type ContextConfig, type FileConfig, findConfig, loadConfig } from './config.ts'
+import { playwrightSpec } from './export.ts'
 import { ensureWebServer } from './web-server.ts'
 import { loadRecordings, type NetworkMode, saveRecordings } from './network.ts'
 import { crawl } from './crawl.ts'
@@ -18,7 +20,7 @@ import { openFile, renderGraphHtml } from './graph-view.ts'
 import { type IntentSummary, loadIntent, loadRules, summarizeIntent } from './intent.ts'
 import { init } from './init.ts'
 import { discoverRoutes } from './routes.ts'
-import { renderDiff, renderMarkdown, renderText, renderUsage } from './report.ts'
+import { groupFindings, renderDiff, renderMarkdown, renderText, renderUsage } from './report.ts'
 import type { Finding, Graph } from './types.ts'
 
 /*
@@ -30,6 +32,7 @@ import type { Finding, Graph } from './types.ts'
 
 const USAGE = `Usage: uiscout init [--force]
        uiscout check [--url <url>] [options]
+       uiscout export [<n>] [--to <file>]
        uiscout diff <before.graph.json> <after.graph.json>
        uiscout graph [<graph.json>] [--open] [--out <dir>]
        uiscout fuzz [--url <url>] [--seed <n>] [--runs <n>] [--length <n>]
@@ -61,6 +64,8 @@ const USAGE = `Usage: uiscout init [--force]
   --update              Accept this run as the new baseline instead of comparing
   --affected <ref>      Walk only the screens built from files changed since <ref> (and the
                         screens leading to them); falls back to a full run when it can't tell
+  --watch               Run, then run again on every saved change: only the screens the
+                        changed files build when there is a baseline
   --no-rules            Skip *.rules.ts invariants and *.intent.md coverage
   --open                Open the graph page in the browser when the run ends
   --screenshots         Screenshot every screen for the graph page (default on, off when CI is set:
@@ -99,6 +104,9 @@ async function main() {
       update: { type: 'boolean', default: false },
       quick: { type: 'boolean', default: false },
       force: { type: 'boolean', default: false },
+      watch: { type: 'boolean', default: false },
+      changed: { type: 'string' },
+      to: { type: 'string' },
       reset: { type: 'boolean', default: false },
       affected: { type: 'string' },
       seed: { type: 'string' },
@@ -131,12 +139,40 @@ async function main() {
   const configPath = values.config ? path.resolve(values.config) : findConfig(process.cwd())
   for (const key of ['out', 'baseline', 'dir'] as const) if (values[key]) values[key] = path.resolve(values[key])
   for (let i = 1; i < positionals.length; i++) if (existsSync(positionals[i])) positionals[i] = path.resolve(positionals[i])
+  if (values.to) values.to = path.resolve(values.to)
+  const callerCwd = process.cwd()
   if (configPath) {
     if (path.dirname(configPath) !== process.cwd()) process.stderr.write(`  config: ${path.relative(process.cwd(), configPath)}\n`)
     process.chdir(path.dirname(configPath))
   }
   const out = values.out ?? path.resolve('.uiscout')
   values.out = out
+  if (positionals[0] === 'export') {
+    // A finding of the last run as a Playwright test (before the config is read
+    // with its variables filled in: the test keeps them as process.env).
+    const findingsFile = path.join(out, 'findings.json')
+    if (!existsSync(findingsFile)) throw new Error(`no ${path.relative(callerCwd, findingsFile)}: run uiscout check first`)
+    const { findings } = JSON.parse(await readFile(findingsFile, 'utf8')) as { findings: Finding[] }
+    const groups = groupFindings(findings.filter((f) => f.severity === 'error'))
+    const n = Number(positionals[1])
+    if (!positionals[1]) {
+      if (!groups.length) process.stdout.write('No errors in the last run.\n')
+      for (const [i, list] of groups.entries()) process.stdout.write(`${String(i + 1).padStart(3)}  ${list[0].oracle.padEnd(12)} ${list[0].message}\n       at ${list[0].at}\n`)
+      process.exit(0)
+    }
+    const finding = groups[n - 1]?.[0]
+    if (!finding) throw new Error(`no error #${positionals[1]} in the last run (it has ${groups.length}): run uiscout export to list them`)
+    const raw = (configPath ? JSON.parse(await readFile(configPath, 'utf8')) : {}) as FileConfig
+    const graph = JSON.parse(await readFile(path.join(out, 'graph.json'), 'utf8')) as Graph
+    const ctx = raw.contexts?.find((c) => c.name === finding.context)
+    const spec = playwrightSpec({ finding, url: graph.entry, setup: ctx?.setup, auth: ctx ? ctx.auth : raw.auth })
+    const target = values.to ?? path.join(callerCwd, `uiscout-${n}.spec.ts`)
+    await mkdir(path.dirname(target), { recursive: true })
+    await writeFile(target, spec)
+    process.stdout.write(`Wrote ${path.relative(callerCwd, target)}: ${finding.oracle}: ${finding.message}\n`)
+    process.exit(0)
+  }
+
   const file: FileConfig = configPath ? await loadConfig(configPath) : {}
   const root = path.resolve(file.root ?? '.')
   const url = values.url ?? file.url
@@ -306,6 +342,43 @@ async function main() {
     process.exit(values.help ? 0 : 2)
   }
 
+  if (values.watch) {
+    // The app is started once here; every run reuses it.
+    if (file.webServer) await ensureWebServer(file.webServer, url, { cwd: process.cwd(), out, log })
+    const args = process.argv.slice(2).filter((a) => a !== '--watch')
+    const ignored = [out, path.resolve(values.baseline ?? file.baseline ?? 'uiscout')]
+    const run = (changed: string[] | null) =>
+      new Promise<void>((resolve) => {
+        const child = spawn(process.execPath, [...process.execArgv, process.argv[1], ...args, ...(changed ? ['--changed', changed.join(',')] : [])], { cwd: callerCwd, stdio: 'inherit' })
+        child.on('exit', () => resolve())
+      })
+    let pending = new Set<string>()
+    let running = true
+    let timer: NodeJS.Timeout | undefined
+    const next = async () => {
+      running = true
+      const changed = [...pending]
+      pending = new Set()
+      process.stderr.write(`\n  changed: ${changed.slice(0, 5).join(', ')}${changed.length > 5 ? `, +${changed.length - 5} more` : ''}\n`)
+      await run(changed)
+      running = false
+      process.stderr.write('  watching for changes (Ctrl+C to stop)\n')
+      if (pending.size) void next()
+    }
+    await run(null)
+    running = false
+    process.stderr.write('  watching for changes (Ctrl+C to stop)\n')
+    watch(root, { recursive: true }, (_event, name) => {
+      if (!name) return
+      const abs = path.join(root, name.toString())
+      if (/(^|[\\/])(node_modules|\.git|dist|build|\.next)([\\/]|$)/.test(name.toString()) || ignored.some((d) => abs.startsWith(d)) || abs === configPath) return
+      pending.add(path.relative(process.cwd(), abs).split(path.sep).join('/'))
+      clearTimeout(timer)
+      timer = setTimeout(() => !running && void next(), 400)
+    })
+    return
+  }
+
   const started = Date.now()
   const contexts = await prepare(url)
   const now = values.now ?? file.now
@@ -324,9 +397,9 @@ async function main() {
   // Affected-only (§10): needs a baseline that knows each screen's sources and paths.
   const baseline = existsSync(baselineDir) ? await loadBaseline(baselineDir) : null
   let selection: Selection | null = null
-  if (values.affected && !values.update) {
+  if ((values.affected || values.changed) && !values.update) {
     selection = baseline?.graph
-      ? selectAffected(baseline.graph, baseline.replays, changedSince(values.affected))
+      ? selectAffected(baseline.graph, baseline.replays, values.changed ? (list(values.changed) ?? []) : changedSince(values.affected!))
       : { only: null, scope: new Set(), reason: 'full run: no baseline to select from' }
     process.stderr.write(`  affected: ${selection.reason}\n`)
     if (selection.only && !Object.keys(selection.only).length) {
@@ -420,7 +493,7 @@ async function main() {
   // In GitHub Actions the run summary shows the same report without any token.
   if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, markdown)
   const accepted = values.update ? `, accepted as baseline in ${path.relative(process.cwd(), baselineDir) || '.'}/` : ''
-  process.stdout.write(`${text}\n\nWrote ${path.relative(process.cwd(), out) || '.'}/${accepted} in ${((Date.now() - started) / 1000).toFixed(1)}s\n`)
+  process.stdout.write(`${text}\n\nWrote ${path.relative(callerCwd, out) || '.'}/${accepted} in ${((Date.now() - started) / 1000).toFixed(1)}s\n`)
   process.exit(result.findings.some((f) => f.severity === 'error') ? 1 : 0)
 }
 
