@@ -117,7 +117,7 @@ describe('contexts', () => {
 
   it('signs in once and starts every screen from the saved state', async () => {
     const file = path.join(tmpdir(), `uiscout-auth-${process.pid}.json`)
-    await signIn(`${zoo.url}login.html`, { steps: [{ fill: 'Name', text: 'ann' }, { click: 'Log in' }], waitFor: '/members' }, file)
+    await signIn(`${zoo.url}login.html`, { steps: [{ fill: 'Name', text: 'ann' }, { click: 'Log in' }], waitFor: '/members.html' }, file)
     const run = await crawl({ url: `${zoo.url}members.html`, maxDepth: 1, settleMs: 150, a11y: false, contexts: [{ name: 'member', storageState: file }] })
     expect(run.graph.edges.find((e) => elOf(e).includes('members-area'))).toMatchObject({ from: '/members.html', to: '/clean.html' })
     // No setup ran: the login page was never loaded during the walk.

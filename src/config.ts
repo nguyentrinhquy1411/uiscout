@@ -38,7 +38,7 @@ export interface ContextConfig {
 
 export interface AuthConfig {
   steps: SetupStep[]
-  /** Wait until the URL path starts with this after the steps (e.g. "/" once signed in). */
+  /** After the steps, wait until the URL path is this or below it ("/dashboard"; "/" means the root only). */
   waitFor?: string
 }
 

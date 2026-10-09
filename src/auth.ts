@@ -29,7 +29,7 @@ export async function signIn(
     await runSetup(page, auth.steps, origin)
     if (auth.waitFor) {
       const prefix = auth.waitFor
-      await page.waitForURL((u) => u.pathname.startsWith(prefix), { timeout: 20_000 }).catch(() => {
+      await page.waitForURL((u) => reached(u.pathname, prefix), { timeout: 20_000 }).catch(() => {
         throw new Error(`sign-in didn't reach ${prefix} (stopped at ${new URL(page.url()).pathname}): check the auth steps and the account`)
       })
     }
@@ -40,6 +40,12 @@ export async function signIn(
   } finally {
     await browser.close()
   }
+}
+
+/** The path is `target` or below it; "/" means the root itself, not every page. */
+export function reached(pathname: string, target: string): boolean {
+  if (pathname === target || target === '/') return pathname === target
+  return pathname.startsWith(target.endsWith('/') ? target : `${target}/`)
 }
 
 let privateDir: string | undefined

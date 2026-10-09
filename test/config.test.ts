@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { reached } from '../src/auth.ts'
 import { findConfig, interpolateEnv } from '../src/config.ts'
 
 describe('findConfig', () => {
@@ -29,5 +30,14 @@ describe('interpolateEnv', () => {
 
   it('fails on a variable that is not set instead of typing an empty string', () => {
     expect(() => interpolateEnv({ text: '${MISSING_SECRET}' }, {})).toThrow(/MISSING_SECRET/)
+  })
+})
+
+describe('auth waitFor', () => {
+  it('waits for the page or one below it; "/" is the root only', () => {
+    expect(reached('/', '/')).toBe(true)
+    expect(reached('/login', '/')).toBe(false)
+    expect(reached('/app/home', '/app')).toBe(true)
+    expect(reached('/application', '/app')).toBe(false)
   })
 })

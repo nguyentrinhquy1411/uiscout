@@ -42,7 +42,7 @@ jobs:
         id: host
         if: always() && hashFiles('.uiscout/graph.html') != '' && env.VERCEL_TOKEN != ''
         run: |
-          pnpm exec uiscout site --to uiscout-site
+          pnpm exec uiscout site --to uiscout-site   # add --screenshots only if the screens hold no personal data
           url=$(npx --yes vercel@latest deploy uiscout-site --yes --token "$VERCEL_TOKEN")
           echo "url=$url" >> "$GITHUB_OUTPUT"
           printf '\n[Open the graph for this pull request](%s)\n' "$url" >> .uiscout/report.md

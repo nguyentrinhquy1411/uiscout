@@ -34,7 +34,7 @@ import type { Finding, Graph } from './types.ts'
 const USAGE = `Usage: uiscout init [--force]
        uiscout check [--url <url>] [options]
        uiscout export [<n>] [--to <file>]
-       uiscout site [--to <dir>]
+       uiscout site [--to <dir>] [--screenshots]
        uiscout diff <before.graph.json> <after.graph.json>
        uiscout graph [<graph.json>] [--open] [--out <dir>]
        uiscout fuzz [--url <url>] [--seed <n>] [--runs <n>] [--length <n>]
@@ -152,7 +152,7 @@ async function main() {
   if (positionals[0] === 'site') {
     // The last run as a static site, to host per pull request (see the CI guide).
     const to = values.to ?? path.join(callerCwd, 'uiscout-site')
-    const written = await buildReportSite(out, to)
+    const written = await buildReportSite(out, to, { screens: values.screenshots })
     process.stdout.write(`Wrote ${path.relative(callerCwd, to)}/: ${written.join(', ')}\n`)
     process.exit(0)
   }
