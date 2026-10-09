@@ -1,7 +1,10 @@
 # CLI reference
 
 ```text
+uiscout init     [--force]
 uiscout check    [--url <url>] [options]
+uiscout export   [<n>] [--to <file>]
+uiscout site     [--to <dir>] [--screenshots]
 uiscout graph    [<graph.json>] [--open] [--out <dir>]
 uiscout diff     <before.graph.json> <after.graph.json>
 uiscout fuzz     [--url <url>] [--seed <n>] [--runs <n>] [--length <n>]
@@ -12,7 +15,11 @@ uiscout usage    report [<graph.json>]
 uiscout --help
 ```
 
-Every command reads `./uiscout.config.json` when it exists; flags override it.
+Every command reads the nearest `uiscout.config.json`, from the current directory up to the repository root; flags override it. Paths in the file are read from its directory; paths given as flags, from the current one.
+
+## `uiscout init`
+
+Writes `uiscout.config.json` for the project in the current directory (framework, port, `webServer`, `seeds`, `block`), adds `.uiscout/` to `.gitignore` and `scout*` scripts to `package.json`. Exits 1 when a config exists, unless `--force`. See [Install](01-install.md#set-up-an-app-uiscout-init).
 
 ## `uiscout check`
 
@@ -20,12 +27,14 @@ Walks the app, runs every oracle, compares with the baseline when there is one, 
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `--config <file>` | `./uiscout.config.json` if present | Settings file |
-| `--url <url>` | from config | Entry URL of the running app |
+| `--config <file>` | the nearest `uiscout.config.json` | Settings file |
+| `--url <url>` | from config | Entry URL (started first when the config has `webServer`) |
+| `--quick` | — | Depth 1, no axe, no clock fast-forward (flags given still win) |
+| `--watch` | — | Rerun on every saved change, affected screens only when there is a baseline |
 | `--out <dir>` | `.uiscout` | Output directory |
 | `--depth <n>` | 2 | Actions from the entry |
 | `--max-steps <n>` | 250 | Total actions |
-| `--seeds <paths>` | — | Comma-separated routes no link reaches |
+| `--seeds <paths>` | — | Comma-separated routes no link reaches; `auto` reads the router |
 | `--now <iso>` | real time | When the app's clock starts |
 | `--tz <zone>` | `Asia/Ho_Chi_Minh` | Browser time zone |
 | `--allow-4xx <list>` | — | Expected 4xx: `404`, `GET /api/me` |
@@ -46,6 +55,20 @@ Walks the app, runs every oracle, compares with the baseline when there is one, 
 | `-h`, `--help` | — | Print usage |
 
 Writes to `--out`: `graph.json`, `findings.json`, `snapshots.json`, `report.txt`, `report.md`, `graph.html`, `screens/`. With `--update`: the baseline in `--baseline`. With `--mode record`: `recordings.json` in `--baseline`.
+
+## `uiscout export`
+
+| Argument / flag | Default | Meaning |
+| --- | --- | --- |
+| (none) | — | Lists the last run's errors, numbered as in the report |
+| `<n>` | — | Writes error `n` as a Playwright test |
+| `--to <file>` | `./uiscout-<n>.spec.ts` | Where to write it |
+
+Reads `findings.json` and `graph.json` from `--out`. See [The check command](02-check.md#from-a-finding-to-a-test-uiscout-export).
+
+## `uiscout site`
+
+Copies the last run into a directory to host: the graph page as `index.html` (marked `noindex`), `graph.json`, `findings.json`, `report.md`, `report.txt`; `screens/` only with `--screenshots`. Never the server log. `--to` (default `./uiscout-site`) must be new, empty, or written by this command before. See [CI](11-ci.md#a-hosted-report-per-pull-request).
 
 ## `uiscout graph`
 
@@ -112,4 +135,6 @@ See [Production usage overlay](15-usage.md).
 | `uiscout/rules` | `always`, `when`, `eventually`, `state` in `*.rules.ts` |
 | `uiscout/adapter` | The `WidgetAdapter` type for `*.adapter.ts` |
 | `uiscout/vite` | The `uiscoutIds()` plugin (`{ sources: false }` for production) |
+| `uiscout/webpack` | The same transform as a webpack loader |
+| `uiscout/next` | `withUiscout(config)` for Next.js (webpack and Turbopack) |
 | `uiscout/track` | `trackUsage()` for production usage counts |

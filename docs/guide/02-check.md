@@ -8,7 +8,7 @@
 2. On each screen, lists every visible interactive element. While a dialog or menu is open, only the elements inside it.
 3. Acts on each element:
    - buttons, links, tabs, menu items, checkboxes and switches are **clicked**;
-   - text fields get the text `uiscout` typed into them, then **Enter**;
+   - text fields get a value that fits them (an email, a number in range, a date: see [what gets typed](03-config.md#what-gets-typed)), then **Enter**;
    - comboboxes and sliders are recorded but not operated yet.
 4. After each step: waits until no request is in flight and the DOM has been still for 250 ms, fast-forwards the page clock by 5 s, waits again, then runs the oracles.
 5. A step that leads to a new screen queues that screen, up to `--depth`.
@@ -20,6 +20,8 @@ Every screen is explored in a **fresh browser context** (clean IndexedDB, localS
 | Flag | Default | Use it to |
 | --- | --- | --- |
 | `--url <url>` | — | Point at the app (required without a config file) |
+| `--quick` | — | A first look: depth 1, no axe, no clock fast-forward |
+| `--watch` | — | Run again on every saved change (see below) |
 | `--depth <n>` | 2 | Limit actions from the entry. 1 is quick, 2–3 is thorough |
 | `--max-steps <n>` | 250 | Cap the total actions; raise it for large apps |
 | `--block <globs>` | — | Block paid or noisy APIs: `"**/api/ai/**,**/analytics/**"` |
@@ -34,14 +36,20 @@ Every flag: [CLI reference](cli-reference.md).
 ## Reading the report
 
 ```text
-uiscout: 1 errors, 2 warnings · 11 nodes, 223 edges, 227 steps
+uiscout: 2 errors, 2 warnings · 11 nodes, 223 edges, 227 steps
+Screens with errors: /checkout (2)
 
 Graph diff (vs uiscout/app.graph.json)          ← only with a baseline
   (no change)
 
-Errors (1)
-  script       console.error: Error: Base UI: MenuGroupContext is missing.
-               at / → click /.button:account@nav · /dashboard → click … · +5 more
+Errors (2) · uiscout export <n> writes a Playwright test for one
+    1  network      POST /api/orders returned 500
+                    at /checkout → click checkout.CheckoutForm.placeOrder
+                    in src/features/checkout/CheckoutForm.tsx:48
+                    repro open / → click "Cart" → click "Checkout" → type "uiscout@example.com" into "Email" → click "Place order"
+    2  script       console.error: Error: MenuGroupContext is missing.
+                    at /checkout → click checkout.Header.account · /cart → click … · +5 more
+                    repro open / → click "Cart" → click "Checkout" → click "Account"
 
 Warnings (2)
   a11y         button-name: Buttons must have discernible text — #nameless
@@ -57,16 +65,19 @@ Never settled (7): DOM kept changing, judged after the timeout
 Not walked: 2 destructive, 1 input, 39 repeat
 ```
 
-### First line
+### First lines
 
-Errors and warnings are counted **by message**: the same error on seven screens counts once. Then the number of screens, edges and steps walked.
+Errors and warnings are counted **by message**: the same error on seven screens counts once. Then the number of screens, edges and steps walked, and the screens with errors, most first.
+
+While it runs, each screen logs screens done of those found, actions used of the budget, and a rough time left.
 
 ### Errors and warnings
 
-Each entry has up to three lines:
-- the **oracle** that raised it and its message;
+Each entry has up to four lines:
+- its **number** (errors only, for `uiscout export`), the **oracle** that raised it and its message;
 - **at**: where it happened. `load /x` means on arriving at `/x`; `/x → click Y` means after clicking Y on `/x`. With several places, the first three and a count;
-- **via** (rule violations only): the steps from the entry to the violation.
+- **in**: the source file and line of the control, when the app is built with the [identity plugin](10-plugin-affected.md);
+- **repro**: the shortest path that shows it, in words, to follow by hand. For rule violations, **via**: the states that broke the rule.
 
 | Oracle | Raised when | Severity |
 | --- | --- | --- |
@@ -99,6 +110,23 @@ Each entry has up to three lines:
 | `not-found` | The control couldn't be found again after returning to the screen |
 | `budget` | `--max-steps` ran out |
 
+## From a finding to a test: `uiscout export`
+
+```sh
+uiscout export                       # the errors of the last run, numbered
+uiscout export 1 --to e2e/checkout.spec.ts
+```
+
+The file is a Playwright test that walks the same path (the sign-in and setup steps from the config included, `${VAR}` kept as `process.env.VAR`) and fails on the same kind of problem: an uncaught exception, `console.error`, or the failing response. For a layout, a11y or rule finding it walks the path and marks where the assertion goes. Run it with `npx playwright test`; once the bug is fixed it stays as a regression test.
+
+## While coding: `--watch`
+
+```sh
+uiscout check --quick --watch
+```
+
+Runs once, then again every time a file under the project changes (`node_modules`, `.git` and build output ignored). With a [baseline](05-baseline.md) and the [plugin](10-plugin-affected.md), each rerun walks only the screens the changed files build; without one, it reruns everything. The app is started once (`webServer`) and kept for every rerun.
+
 ## Exit codes
 
 | Code | Meaning |
@@ -119,10 +147,11 @@ Each entry has up to three lines:
 
 ## How long it takes
 
-Roughly 0.4–2 s per step. Screens run in parallel, but the steps on one screen run one after another, so the total is close to the time of the busiest screen. For reference, on a calendar app with 11 screens:
+Roughly 0.4–2 s per step. Screens run in parallel, but the steps on one screen run one after another, so the total is close to the time of the busiest screen. For reference, on a single-page app with 12 routes and sign-in:
 
 | Setting | Time |
 | --- | --- |
+| `--quick`, `seeds: ["auto"]`, signed in (26 screens, 82 steps) | about 45 s, dev server start included |
 | depth 1, defaults | about 110 s |
 | depth 1, `--no-a11y --fast-forward 0` | about 70 s |
 | depth 2 (31 screens, 431 steps) | about 4 min |

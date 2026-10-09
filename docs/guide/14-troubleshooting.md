@@ -8,8 +8,12 @@
 | `SyntaxError` or `ERR_UNKNOWN_FILE_EXTENSION` on a `.ts` file | Node older than 24 | Upgrade to Node 24 |
 | `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING` | The TypeScript sources were run from inside `node_modules` | Use `pnpm exec uiscout` (the built `dist/`), or run `pnpm build` in the uiscout checkout |
 | `Cannot find package 'uiscout'` in a rules or adapter file | uiscout isn't installed in the app | `pnpm add -D link:../uiscout` |
-| Prints usage and exits with 2 | No `--url` and no config file, or a mistyped command | Add `--url`, or create `uiscout.config.json` |
-| `net::ERR_CONNECTION_REFUSED` | The app isn't running, or the port is wrong | Start the app; check the URL |
+| Prints usage and exits with 2 | No `--url` and no config file, or a mistyped command | Add `--url`, or run `uiscout init` |
+| `net::ERR_CONNECTION_REFUSED` | The app isn't running, or the port is wrong | Add `webServer` to the config, or start the app; check the URL |
+| `web server "…" exited with code 1 before answering` | The dev command failed | Read `.uiscout/server.log` |
+| `web server "…" didn't answer at … within 60s` | Slow first build, or the app listens on another port | Raise `webServer.timeout`; check `webServer.url` |
+| `uiscout.config.json uses ${X}, which is not set` | A variable the config needs isn't in the environment | `export X=…`, or set it in CI secrets |
+| `sign-in didn't reach /x (stopped at /login)` | Wrong account or password, a captcha, or a `waitFor` the app never goes to | Run with `--headed` to watch the sign-in |
 
 ## Odd results
 
@@ -24,7 +28,8 @@
 | 429 from an external API | uiscout calls a real service too often | `--block` that URL |
 | Long "Never settled" list | A ticking clock or an endless animation | Normal; it only costs time |
 | A failure only in "Flaky" | Depends on what earlier steps did | Doesn't fail the run; look if it repeats |
-| Another project's rules were loaded | Run from the wrong directory | Always run from the app's root |
+| Another project's rules were loaded | A config higher up the tree was found | Put a `uiscout.config.json` in the app's package, or set `root` |
+| Signed-in screens show the sign-in page, or "Could not reach this node again" | The session expired mid-run, or the app's API rate-limits session checks (every screen opens a new tab) | Check the API's limits for session reads; lower `--concurrency` to confirm |
 | `intent line links to rule "x", which no rules file exports` | A rule was renamed or removed | Fix the comment in `*.intent.md` |
 
 ## Unstable baselines
@@ -45,6 +50,7 @@ The check: `uiscout check --update`, then `uiscout check` twice; both must say "
 
 | Change | Effect |
 | --- | --- |
+| `--quick` | Depth 1, no axe, no fast-forward: the fastest useful run |
 | `--no-a11y --fast-forward 0` | About 40 % faster |
 | `--affected origin/main` | Only the affected screens |
 | `--mode replay` | No waiting on a backend |
@@ -59,4 +65,4 @@ Raising `--concurrency` helps little when one screen has many controls: the step
 uiscout check --url … --headed --concurrency 1   # a visible browser, one screen at a time
 ```
 
-Progress lines (`node /x (depth 1)`) go to stderr. Every finding, skipped element, healed lookup and flaky step is in `.uiscout/findings.json`.
+Progress lines (`node /x (depth 1) · 3/10 screens · 12/250 actions · 20s · ~12s left`) go to stderr. Every finding, skipped element, healed lookup and flaky step is in `.uiscout/findings.json`.

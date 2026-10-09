@@ -33,12 +33,12 @@
     <div>
       <div class="eyebrow">Graph-driven frontend testing</div>
       <h1>Point it at your app. It <em>walks every screen.</em></h1>
-      <p class="lede">uiscout clicks every safe control, types into every field and follows every screen it can reach, then judges each step with deterministic checks. You get a map of the app and a list of real defects. No spec to write, no model, the same result on every run.</p>
+      <p class="lede">uiscout starts your app, signs in once, clicks every safe control, types into every field and follows every screen it can reach, then judges each step with deterministic checks. You get a map of the app and a list of real defects, each with the path that shows it. No spec to write, no model, the same result on every run.</p>
       <div class="cta">
         <a class="btn btn-primary" href="docs/01-install.html">Get started</a>
         <a class="btn btn-ghost" href="docs/02-check.html">Read the report</a>
       </div>
-      <div class="cmd"><span id="hero-cmd">uiscout check --url http://localhost:5173/ --open</span><button class="copy" data-copy="hero-cmd" type="button">copy</button></div>
+      <div class="cmd"><span id="hero-cmd">pnpm exec uiscout init &amp;&amp; pnpm run scout:quick</span><button class="copy" data-copy="hero-cmd" type="button">copy</button></div>
     </div>
 
     <figure class="map" aria-label="An example walk of a small shop: eight screens, one failed request found at checkout" style="margin:0">
@@ -63,9 +63,9 @@ click Place order   → /checkout [Confirm]   <span class="x">network</span>
 
 <section class="proof" aria-label="Measured results">
   <div class="wrap">
-    <div class="cell"><b>0</b><span>tests to write before the first report: point it at a running app</span></div>
+    <div class="cell"><b>1</b><span>command to set up: <code>uiscout init</code> reads the framework, port, routes and paid APIs to block</span></div>
     <div class="cell"><b>34 / 35</b><span>navigation patterns observed on uigraph's routing gauntlet, with a five-line config</span></div>
-    <div class="cell"><b>~1 min</b><span>for a quick walk of an 11-screen React app (186 steps, 182 edges)</span></div>
+    <div class="cell"><b>~45 s</b><span>for <code>--quick</code> on a signed-in app: 26 screens from 12 routes, dev server start included</span></div>
     <div class="cell"><b>25 s</b><span>for an affected-only pull request run, against 42 s for the whole app</span></div>
   </div>
 </section>
@@ -81,6 +81,21 @@ click Place order   → /checkout [Confirm]   <span class="x">network</span>
       <div><b>Layout and accessibility</b><p>Overlapping controls, clipped labels, buttons with no accessible name.</p></div>
       <div><b>Regressions</b><p>A control that disappeared, a renamed action, a link that now leads somewhere else, all as a reviewable git diff.</p></div>
       <div><b>Broken business rules</b><p>"An empty cart can't be ordered", "a guest never reaches checkout": your rules, checked on every path walked.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="workflow">
+  <div class="wrap">
+    <h2>From setup to a fix</h2>
+    <p class="intro">Built to fit the loop you already have: one command to set up, a sign-in done once, and every finding turned into something you can act on.</p>
+    <div class="catches">
+      <div><b>Set up in one command</b><p><code>uiscout init</code> writes the config: how to start the app, its routes from TanStack Router or Next.js, and the AI, payment and analytics hosts the walk must never call. Works from any folder of a monorepo.</p></div>
+      <div><b>Signed in, once</b><p><code>auth</code> steps run in a fresh browser before the walk; every screen starts from that session. Passwords come from <code>${ENV}</code> variables and never reach a report.</p></div>
+      <div><b>Every error, reproducible</b><p>A one-line repro (<code>open / → click "Cart" → click "Pay"</code>) and the control's source file and line. <code>uiscout export 1</code> writes it as a Playwright test.</p></div>
+      <div><b>Forms that let it through</b><p>Fields get values they accept: emails, numbers within <code>min</code> and <code>max</code>, dates, values matching <code>pattern</code>. The same text every run.</p></div>
+      <div><b>Feedback while you code</b><p><code>check --watch</code> reruns on save and, with a baseline, walks only the screens the changed files build.</p></div>
+      <div><b>A page per pull request</b><p>A comment with the verdict and the graph diff, and <code>uiscout site</code> to host the graph for each pull request.</p></div>
     </div>
   </div>
 </section>
@@ -134,6 +149,7 @@ click Place order   → /checkout [Confirm]   <span class="x">network</span>
       <table>
         <thead><tr><th>Run</th><th>What it walks</th><th>Time</th></tr></thead>
         <tbody>
+          <tr><td><code>check --quick</code>, signed in, <code>seeds: ["auto"]</code></td><td>26 screens, 82 steps, dev server start included</td><td>~45 s</td></tr>
           <tr><td><code>check --depth 1 --no-a11y --fast-forward 0</code></td><td>11 screens, 186 steps</td><td>~1 min</td></tr>
           <tr><td><code>check</code> (depth 1, all checks)</td><td>11 screens</td><td>~2 min</td></tr>
           <tr><td><code>check --depth 2</code></td><td>31 screens, 431 steps</td><td>~4 min</td></tr>
@@ -152,11 +168,12 @@ click Place order   → /checkout [Confirm]   <span class="x">network</span>
 
 <section class="band" id="start">
   <div class="wrap">
-    <h2>Start in three commands</h2>
-    <p class="intro">Any web app you can open in a browser: a dev server, a preview build or staging.</p>
+    <h2>Start in a minute</h2>
+    <p class="intro">Any web app: uiscout starts its dev server, or walks one already running (a preview build, staging).</p>
 <pre class="code start">pnpm add -D github:nguyentrinhquy1411/uiscout
 pnpm exec playwright install chromium
-pnpm exec uiscout check --url http://localhost:5173/ --open</pre>
+pnpm exec uiscout init        <span class="c"># config, scripts, .gitignore</span>
+pnpm run scout:quick          <span class="c"># the first report</span></pre>
     <p class="intro">Then commit a baseline with <code>uiscout check --update</code>, and add the <a href="docs/11-ci.html">GitHub Actions job</a> so every pull request gets a report comment.</p>
   </div>
 </section>
@@ -196,7 +213,7 @@ pnpm exec uiscout check --url http://localhost:5173/ --open</pre>
       <a href="docs/07-rules-intent.html"><span>07</span><b>Business rules and intent files</b><em>Check that the app does the right thing</em></a>
       <a href="docs/08-fuzz.html"><span>08</span><b>Fuzzing</b><em>Rare action sequences that break things</em></a>
       <a href="docs/09-adapters.html"><span>09</span><b>Widget adapters</b><em>Drag-and-drop boards, gantts, canvases</em></a>
-      <a href="docs/10-plugin-affected.html"><span>10</span><b>Vite plugin and affected runs</b><em>Fast pull request runs</em></a>
+      <a href="docs/10-plugin-affected.html"><span>10</span><b>Identity plugins and affected runs</b><em>Fast pull request runs</em></a>
       <a href="docs/11-ci.html"><span>11</span><b>Running in CI</b><em>GitHub Actions and PR comments</em></a>
       <a href="docs/12-mcp.html"><span>12</span><b>MCP server for coding agents</b><em>Claude Code, Cursor, Copilot</em></a>
       <a href="docs/15-usage.html"><span>15</span><b>Production usage overlay</b><em>Rank untested controls by real traffic</em></a>

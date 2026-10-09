@@ -1,6 +1,6 @@
-# 10. Vite plugin and affected-only runs
+# 10. Identity plugins and affected-only runs
 
-Without touching the app, uiscout knows controls by fingerprint (role, name, landmarks, position). The Vite plugin adds two things: steadier IDs, and knowing which files each screen is built from. The second lets a pull request walk only the screens it affects.
+Without touching the app, uiscout knows controls by fingerprint (role, name, landmarks, position). The identity plugin (for Vite, webpack and Next.js) adds two things: steadier IDs, and knowing which files each screen is built from. The second lets a pull request walk only the screens it affects.
 
 ## Install the plugin
 
@@ -19,6 +19,29 @@ Run the app in test mode for the plugin to apply: `vite --mode test`, or `vite b
 | --- | --- | --- |
 | `include` | `.jsx`/`.tsx` files under `src/` | Regex of files to stamp |
 | `root` | the Vite root | `data-scout-src` paths are relative to this |
+
+### Next.js (webpack or Turbopack)
+
+```js
+// next.config.mjs
+import { withUiscout } from 'uiscout/next'
+
+const config = { /* … */ }
+export default process.env.UISCOUT ? withUiscout(config) : config
+```
+
+Start the app with `UISCOUT=1 next dev` (in `webServer.command`). It keeps the app's own `webpack` function and `turbopack.rules`.
+
+### webpack, Rspack, Create React App (craco)
+
+```js
+// webpack.config.js, for test builds
+module: {
+  rules: [{ test: /\.[jt]sx$/, exclude: /node_modules/, enforce: 'pre', loader: 'uiscout/webpack' }],
+}
+```
+
+Same transform and attributes as the Vite plugin; options `root` (default: webpack's context) and `sources`.
 
 ## What it adds
 

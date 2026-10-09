@@ -4,7 +4,7 @@
 
 - **Node 24 or later** (uiscout runs its TypeScript directly with Node during development).
 - **pnpm** 10.
-- A web app that is **running** and reachable from a browser (a dev server, `vite preview`, staging…).
+- A web app: uiscout starts its dev server (see `init` below), or walks one already running (a dev server, `vite preview`, staging…).
 
 ## Install uiscout
 
@@ -13,7 +13,7 @@ git clone https://github.com/nguyentrinhquy1411/uiscout.git ~/dev/uiscout
 cd ~/dev/uiscout
 pnpm install                          # installs dependencies and builds dist/
 pnpm exec playwright install chromium # the browser that walks the app
-pnpm test                             # optional: about 85 tests, ~30 s
+pnpm test                             # optional: about 120 tests, ~1 min
 ```
 
 ## Three ways to run it
@@ -51,33 +51,61 @@ With `link:`, run `pnpm build` in the uiscout checkout after changing its code, 
 pnpm add -D github:nguyentrinhquy1411/uiscout
 ```
 
-### Scripts in the app (optional)
+## Set up an app: `uiscout init`
 
-```json
-{
-  "scripts": {
-    "scout": "uiscout check --open",
-    "scout:graph": "uiscout graph --open",
-    "scout:accept": "uiscout check --update"
-  }
-}
+In the app's directory (in a monorepo, the web app's package):
+
+```sh
+cd ~/dev/my-app
+uiscout init
 ```
+
+It looks at the project and writes `uiscout.config.json`:
+
+| It reads | It writes |
+| --- | --- |
+| The framework (Vite, Next.js, Remix, SvelteKit, Astro, Angular, CRA, webpack) and its port, from the dev script (`--port`, `-p`) or `vite.config` | `url` |
+| The package manager, from the nearest lockfile up to the repository root, and the `dev` (or `start`) script | `webServer`: uiscout starts the app itself, and stops it afterwards |
+| A TanStack Router route tree or a Next.js `app/` or `pages/` directory | `"seeds": ["auto"]`: every static route gets walked, linked or not |
+| AI, payment and analytics hosts in the code (OpenAI, Anthropic, Groq, DeepSeek, Gemini, Stripe, Google Analytics, PostHog, Segment, `/api/ai`) | `block`: the walk never sends those requests |
+
+It also adds `.uiscout/` to `.gitignore` and four scripts to `package.json` (`scout`, `scout:quick`, `scout:graph`, `scout:accept`), keeping any that exist. It prints every guess, and never overwrites an existing config without `--force`.
 
 ## First run
 
-1. Start the app: `pnpm dev`.
-2. Stay in the **app's root directory**: uiscout reads its config, rules and intent files from the current directory.
-3. Run:
-
 ```sh
-uiscout check --url http://localhost:5173/ --open
+pnpm run scout:quick     # uiscout check --quick: a first look in seconds
+pnpm run scout           # the full walk
+pnpm run scout:graph     # the map of the app, in the browser
 ```
 
-If the app calls paid APIs (AI, SMS, test payments), block them from the very first run:
+`--quick` walks one action deep, without the axe checks or the clock fast-forward. While it runs, each screen logs where the walk stands:
 
-```sh
-uiscout check --url http://localhost:5173/ --block "**/api/ai/**" --open
+```text
+  node /docs (depth 0) · 3/10 screens · 12/250 actions · 20s · ~12s left
 ```
+
+The config is found from any directory below it, up to the repository root, so `uiscout check` works from `src/` too. Paths in it are read from its own directory.
+
+Without `init`, point uiscout at a running app: `uiscout check --url http://localhost:5173/`.
+
+### Behind a sign-in
+
+Add the sign-in once to the config; uiscout runs it in a fresh browser before the walk, and every screen starts signed in:
+
+```json
+"auth": {
+  "steps": [
+    { "goto": "/login" },
+    { "fill": "Email", "text": "${SCOUT_EMAIL}" },
+    { "fill": "Password", "text": "${SCOUT_PASSWORD}" },
+    { "click": "Sign in" }
+  ],
+  "waitFor": "/"
+}
+```
+
+`${NAME}` reads an environment variable, so the password stays out of the file. Details: [Configuration](03-config.md#sign-in-auth).
 
 ## What you get
 
@@ -89,6 +117,6 @@ uiscout check --url http://localhost:5173/ --block "**/api/ai/**" --open
 | A screenshot of each screen | `.uiscout/screens/*.jpg` |
 | Pull request comment | `.uiscout/report.md` |
 
-Add `.uiscout/` to the app's `.gitignore`: it's the output of each run, not something to commit.
+`.uiscout/` is the output of each run, not something to commit (`init` adds it to `.gitignore`).
 
 Next: [The `check` command and its report](02-check.md).
