@@ -1,0 +1,11 @@
+{
+  "name": "uiscout",
+  "owner": { "name": "nguyentrinhquy1411" },
+  "plugins": [
+    {
+      "name": "uiscout",
+      "source": "./",
+      "description": "Find UI bugs by walking the running web app with uiscout."
+    }
+  ]
+}

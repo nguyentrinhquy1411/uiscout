@@ -32,6 +32,7 @@ const GROUPS: Array<[string, Array<[file: string, title: string]>]> = [
     ['09-adapters', 'Widget adapters'],
   ]],
   ['Beyond tests', [
+    ['16-skill', 'Claude Code skill'],
     ['12-mcp', 'MCP for agents'],
     ['15-usage', 'Production usage'],
   ]],

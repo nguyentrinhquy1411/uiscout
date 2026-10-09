@@ -54,6 +54,7 @@ Every step is judged three ways.
   - propose edges and rules, which stay quarantined until the runner proves them.
 
   It has no model and needs no API key. ([guide](docs/guide/12-mcp.md))
+- **Claude Code skill.** Install it with `/plugin marketplace add nguyentrinhquy1411/uiscout` and `/plugin install uiscout@uiscout` (on Claude Code 2.1.275+, one line: `/plugin install uiscout --marketplace nguyentrinhquy1411/uiscout`); Claude then sets uiscout up, runs it, reads the report and fixes what it finds. ([guide](docs/guide/16-skill.md))
 - **Production usage overlay.** `uiscout/track` counts which controls real users act on. Reports then rank untested controls by traffic and list walked controls nobody uses. ([guide](docs/guide/15-usage.md))
 
 ## Measured

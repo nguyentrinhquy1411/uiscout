@@ -1,0 +1,8 @@
+{
+  "name": "uiscout",
+  "description": "Find UI bugs by walking the running web app with uiscout: set it up, run it, read the report, fix, and keep a baseline.",
+  "version": "0.1.0",
+  "author": { "name": "nguyentrinhquy1411" },
+  "homepage": "https://uiscout.vercel.app",
+  "repository": "https://github.com/nguyentrinhquy1411/uiscout"
+}

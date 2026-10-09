@@ -51,6 +51,10 @@ With `link:`, run `pnpm build` in the uiscout checkout after changing its code, 
 pnpm add -D github:nguyentrinhquy1411/uiscout
 ```
 
+### D. Let Claude Code do it
+
+With the [uiscout skill](16-skill.md) installed, ask Claude Code to "set up uiscout and find UI bugs": it installs, runs `init`, and walks the app.
+
 ## Set up an app: `uiscout init`
 
 In the app's directory (in a monorepo, the web app's package):

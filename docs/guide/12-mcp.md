@@ -4,6 +4,8 @@
 
 Proposals are quarantined. They change nothing (no test, no coverage, no baseline) until the runner proves them, so a wrong guess costs one browser run and nothing else.
 
+For Claude Code, the [skill](16-skill.md) covers the run-read-fix loop through the CLI; the MCP server adds single clicks and proposals.
+
 ## Connect an agent
 
 Run it from the app's package (the config is found upwards, as for `check`), or point it there with `--dir`. Tools that click need the app running: the MCP server doesn't start `webServer`.
@@ -22,7 +24,7 @@ claude mcp add uiscout -- node ~/dev/uiscout/src/cli.ts mcp --dir ~/dev/my-app
 ```json
 {
   "mcpServers": {
-    "uiscout": { "command": "npx", "args": ["uiscout", "mcp"] }
+    "uiscout": { "command": "pnpm", "args": ["exec", "uiscout", "mcp"] }
   }
 }
 ```
@@ -79,4 +81,4 @@ Proposals live in `uiscout/proposals.json`, next to the baseline. Verified edges
 - The server never edits the app's code, its rules, or the baseline graph.
 - Review `uiscout/proposals.json` like any other file before committing it.
 
-Next: [Safety and sensitive data](13-safety.md).
+Next: [Production usage overlay](15-usage.md).
